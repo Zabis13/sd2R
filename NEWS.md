@@ -5,6 +5,7 @@
 * Support for SD 1.x, SD 2.x, SDXL model versions.
 * SafeTensors and GGUF model format loading.
 * Rcpp interface with XPtr and custom finalizer for sd_ctx_t.
+* add gitignore for vocab*.hpp files (128 MB total) — downloaded during installation from GitHub Releases.
 
 ## GPU
 * Vulkan GPU backend via ggmlR — tested on AMD (radv).
