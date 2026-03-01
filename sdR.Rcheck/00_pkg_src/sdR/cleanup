@@ -1,0 +1,8 @@
+#!/bin/sh
+# Clean compiled objects and shared library
+
+rm -f src/*.o src/*.so src/*.dll
+rm -f src/sd/*.o
+rm -f src/sd/thirdparty/*.o
+rm -f src/Makevars
+rm -f src/sd/vocab.hpp src/sd/vocab_mistral.hpp src/sd/vocab_qwen.hpp src/sd/vocab_umt5.hpp

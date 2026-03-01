@@ -30,6 +30,7 @@ Description: Provides Stable Diffusion image generation in R using the 'ggmlR'
     multiple model versions (SD 1.x, SD 2.x, SDXL). Implements the full
     inference pipeline including CLIP text encoding, UNet denoising, and VAE
     decoding. Supports CPU and Vulkan GPU backends for computation.
+SystemRequirements: GNU make, curl or wget (for downloading vocabulary files during installation)
 License: MIT + file LICENSE
 URL: https://github.com/Zabis13/sdR
 BugReports: https://github.com/Zabis13/sdR/issues

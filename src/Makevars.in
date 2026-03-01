@@ -1,30 +1,24 @@
 CXX_STD = CXX17
 
-# ggmlR installed paths
-GGMLR_LIB = $(shell "$(R_HOME)/bin/Rscript" -e "cat(system.file('lib', package='ggmlR'))")
-GGMLR_INCLUDE = $(shell "$(R_HOME)/bin/Rscript" -e "cat(system.file('include', package='ggmlR'))")
-
-# Vulkan flags (auto-detected by configure)
+# All paths and flags resolved by configure (no $(shell) calls)
+GGMLR_LIB = @GGMLR_LIB@
+GGMLR_INCLUDE = @GGMLR_INCLUDE@
 VULKAN_CPPFLAGS = @VULKAN_CPPFLAGS@
 VULKAN_LIBS = @VULKAN_LIBS@
+OPENMP_CPPFLAGS = @OPENMP_CPPFLAGS@
+OPENMP_CFLAGS = @OPENMP_CFLAGS@
+OPENMP_CXXFLAGS = @OPENMP_CXXFLAGS@
 
-# Include paths and defines:
-#   -Isd             : stable-diffusion.cpp headers
-#   -Isd/thirdparty  : json.hpp, stb_image*.h, zip.h, etc.
-#   r_ggml_compat.h  : redirect printf/fprintf/abort to R-safe alternatives
-#   GGML_R_PACKAGE   : activates the redirects in r_ggml_compat.h
-#   _GNU_SOURCE      : needed by ggml for some POSIX features
 PKG_CPPFLAGS = -Isd -Isd/thirdparty \
   -DGGML_USE_CPU -D_GNU_SOURCE \
   -DGGML_MAX_NAME=128 \
   -DGGML_R_PACKAGE -include $(GGMLR_INCLUDE)/r_ggml_compat.h \
-  -DGGML_USE_OPENMP $(VULKAN_CPPFLAGS)
+  $(OPENMP_CPPFLAGS) $(VULKAN_CPPFLAGS)
 
-PKG_CXXFLAGS = -fopenmp
-PKG_CFLAGS = -fopenmp
-PKG_LIBS = -L$(GGMLR_LIB) -lggml -fopenmp $(VULKAN_LIBS) -lpthread -lm
+PKG_CXXFLAGS = $(OPENMP_CXXFLAGS)
+PKG_CFLAGS = $(OPENMP_CFLAGS)
+PKG_LIBS = -L$(GGMLR_LIB) -lggml $(OPENMP_CXXFLAGS) $(VULKAN_LIBS) -lpthread -lm
 
-# stable-diffusion.cpp objects
 SD_OBJECTS = \
   sd/stable-diffusion.o \
   sd/model.o \
@@ -35,11 +29,11 @@ SD_OBJECTS = \
   sd/version.o \
   sd/thirdparty/zip.o
 
-# Rcpp interface objects
 R_INTERFACE_OBJECTS = RcppExports.o sdR_interface.o
 
 OBJECTS = $(R_INTERFACE_OBJECTS) $(SD_OBJECTS)
 
-# Disable r_ggml_compat.h macros for files that include R headers
+# R interface files include R headers which conflict with r_ggml_compat.h
+# macro redirections. R_GGML_IO_IMPL disables the macros.
 RcppExports.o: PKG_CPPFLAGS += -DR_GGML_IO_IMPL
 sdR_interface.o: PKG_CPPFLAGS += -DR_GGML_IO_IMPL

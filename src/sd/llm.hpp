@@ -6,7 +6,7 @@
 #endif
 #include <algorithm>
 #include <fstream>
-#include <iostream>
+// #include <iostream>  // removed for CRAN (std::cout symbol)
 #include <map>
 #include <memory>
 #include <optional>

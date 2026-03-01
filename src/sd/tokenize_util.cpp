@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <iostream>
+// #include <iostream>  // removed for CRAN (std::cout symbol)
 #include <string>
 #include <vector>
 

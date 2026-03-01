@@ -1,0 +1,53 @@
+Package: sdR
+Type: Package
+Title: Stable Diffusion Image Generation
+Version: 0.1.0
+Authors@R: c(
+    person("Yuri", "Baramykov",
+        email = "lbsbmsu@mail.ru",
+        role = c("aut", "cre")),
+    person("Georgi", "Gerganov",
+        role = c("ctb", "cph"),
+        comment = "Author of the GGML library"),
+    person("leejet",
+        role = c("ctb", "cph"),
+        comment = "Author of stable-diffusion.cpp"),
+    person("stduhpf",
+        role = "ctb",
+        comment = "Core contributor to stable-diffusion.cpp"),
+    person("Green-Sky",
+        role = "ctb",
+        comment = "Contributor to stable-diffusion.cpp"),
+    person("wbruna",
+        role = "ctb",
+        comment = "Contributor to stable-diffusion.cpp"),
+    person("akleine",
+        role = "ctb",
+        comment = "Contributor to stable-diffusion.cpp")
+    )
+Description: Provides Stable Diffusion image generation in R using the 'ggmlR'
+    tensor library. Supports text-to-image and image-to-image generation with
+    multiple model versions (SD 1.x, SD 2.x, SDXL). Implements the full
+    inference pipeline including CLIP text encoding, UNet denoising, and VAE
+    decoding. Supports CPU and Vulkan GPU backends for computation.
+SystemRequirements: GNU make, curl or wget (for downloading vocabulary
+        files during installation)
+License: MIT + file LICENSE
+URL: https://github.com/Zabis13/sdR
+BugReports: https://github.com/Zabis13/sdR/issues
+Encoding: UTF-8
+Imports: Rcpp (>= 1.0.0), ggmlR (>= 0.5.0), png
+LinkingTo: Rcpp, ggmlR
+Suggests: testthat (>= 3.0.0)
+RoxygenNote: 7.3.3
+Config/testthat/edition: 3
+NeedsCompilation: yes
+Packaged: 2026-03-01 13:49:25 UTC; yuri
+Author: Yuri Baramykov [aut, cre],
+  Georgi Gerganov [ctb, cph] (Author of the GGML library),
+  leejet [ctb, cph] (Author of stable-diffusion.cpp),
+  stduhpf [ctb] (Core contributor to stable-diffusion.cpp),
+  Green-Sky [ctb] (Contributor to stable-diffusion.cpp),
+  wbruna [ctb] (Contributor to stable-diffusion.cpp),
+  akleine [ctb] (Contributor to stable-diffusion.cpp)
+Maintainer: Yuri Baramykov <lbsbmsu@mail.ru>

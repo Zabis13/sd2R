@@ -1,0 +1,39 @@
+CXX_STD = CXX17
+
+# All paths and flags resolved by configure (no $(shell) calls)
+GGMLR_LIB = @GGMLR_LIB@
+GGMLR_INCLUDE = @GGMLR_INCLUDE@
+VULKAN_CPPFLAGS = @VULKAN_CPPFLAGS@
+VULKAN_LIBS = @VULKAN_LIBS@
+OPENMP_CPPFLAGS = @OPENMP_CPPFLAGS@
+OPENMP_CFLAGS = @OPENMP_CFLAGS@
+OPENMP_CXXFLAGS = @OPENMP_CXXFLAGS@
+
+PKG_CPPFLAGS = -Isd -Isd/thirdparty \
+  -DGGML_USE_CPU -D_GNU_SOURCE \
+  -DGGML_MAX_NAME=128 \
+  -DGGML_R_PACKAGE -include $(GGMLR_INCLUDE)/r_ggml_compat.h \
+  $(OPENMP_CPPFLAGS) $(VULKAN_CPPFLAGS)
+
+PKG_CXXFLAGS = $(OPENMP_CXXFLAGS)
+PKG_CFLAGS = $(OPENMP_CFLAGS)
+PKG_LIBS = -L$(GGMLR_LIB) -lggml $(OPENMP_CXXFLAGS) $(VULKAN_LIBS) -lpthread -lm
+
+SD_OBJECTS = \
+  sd/stable-diffusion.o \
+  sd/model.o \
+  sd/name_conversion.o \
+  sd/tokenize_util.o \
+  sd/upscaler.o \
+  sd/util.o \
+  sd/version.o \
+  sd/thirdparty/zip.o
+
+R_INTERFACE_OBJECTS = RcppExports.o sdR_interface.o
+
+OBJECTS = $(R_INTERFACE_OBJECTS) $(SD_OBJECTS)
+
+# R interface files include R headers which conflict with r_ggml_compat.h
+# macro redirections. R_GGML_IO_IMPL disables the macros.
+RcppExports.o: PKG_CPPFLAGS += -DR_GGML_IO_IMPL
+sdR_interface.o: PKG_CPPFLAGS += -DR_GGML_IO_IMPL

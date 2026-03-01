@@ -12,7 +12,7 @@
 #include <cstring>
 #include <fstream>
 #include <functional>
-#include <iostream>
+// #include <iostream>  // removed for CRAN (std::cout symbol)
 #include <iterator>
 #include <map>
 #include <memory>

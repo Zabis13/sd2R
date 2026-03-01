@@ -1,0 +1,147 @@
+#!/bin/sh
+# Configure script for sdR
+# 1. Download vocabulary header files needed for compilation
+# 2. Resolve ggmlR paths
+# 3. Resolve OpenMP flags from R's Makeconf
+# 4. Auto-detect Vulkan support
+
+# ---- Download vocabulary files from GitHub Releases ----
+
+VOCAB_BASE_URL="https://github.com/Zabis13/sdR/releases/download/assets"
+VOCAB_DIR="src/sd"
+VOCAB_FILES="vocab.hpp vocab_mistral.hpp vocab_qwen.hpp vocab_umt5.hpp"
+DOWNLOAD_FAILED=0
+
+# Find a download tool
+DOWNLOADER=""
+if command -v curl >/dev/null 2>&1; then
+  DOWNLOADER="curl"
+elif command -v wget >/dev/null 2>&1; then
+  DOWNLOADER="wget"
+fi
+
+for f in $VOCAB_FILES; do
+  if [ -f "${VOCAB_DIR}/${f}" ] && [ -s "${VOCAB_DIR}/${f}" ]; then
+    echo "* ${f}: already present, skipping download"
+  else
+    if [ -z "$DOWNLOADER" ]; then
+      DOWNLOAD_FAILED=1
+      break
+    fi
+    echo "* Downloading ${f}..."
+    if [ "$DOWNLOADER" = "curl" ]; then
+      curl -fSL --retry 3 -o "${VOCAB_DIR}/${f}" "${VOCAB_BASE_URL}/${f}" 2>/dev/null
+    else
+      wget -q --tries=3 -O "${VOCAB_DIR}/${f}" "${VOCAB_BASE_URL}/${f}" 2>/dev/null
+    fi
+    # Verify download
+    if [ ! -f "${VOCAB_DIR}/${f}" ] || [ ! -s "${VOCAB_DIR}/${f}" ]; then
+      DOWNLOAD_FAILED=1
+      rm -f "${VOCAB_DIR}/${f}"
+    else
+      echo "* ${f}: downloaded successfully"
+    fi
+  fi
+done
+
+if [ "$DOWNLOAD_FAILED" -eq 1 ]; then
+  echo ""
+  echo "ERROR: Failed to download required vocabulary files."
+  echo ""
+  echo "These files are required for compilation:"
+  echo "  vocab.hpp, vocab_mistral.hpp, vocab_qwen.hpp, vocab_umt5.hpp"
+  echo ""
+  echo "You can download them manually from:"
+  echo "  ${VOCAB_BASE_URL}"
+  echo ""
+  echo "Place the files into the src/sd/ directory of the package source,"
+  echo "then run install.packages() again."
+  echo ""
+  echo "If you don't have curl or wget, install one of them:"
+  echo "  sudo apt install curl    # Debian/Ubuntu"
+  echo "  sudo yum install curl    # RHEL/CentOS"
+  echo "  brew install curl        # macOS"
+  exit 1
+fi
+
+# ---- Find R and Rscript ----
+
+: ${R_HOME=$(R RHOME 2>/dev/null)}
+if [ -n "$R_HOME" ]; then
+  RSCRIPT="${R_HOME}/bin/Rscript"
+else
+  RSCRIPT="Rscript"
+fi
+
+# ---- Resolve ggmlR installed paths ----
+
+GGMLR_LIB=$($RSCRIPT -e "cat(system.file('lib', package='ggmlR'))" 2>/dev/null)
+GGMLR_INCLUDE=$($RSCRIPT -e "cat(system.file('include', package='ggmlR'))" 2>/dev/null)
+
+if [ -z "$GGMLR_LIB" ] || [ -z "$GGMLR_INCLUDE" ]; then
+  echo "ERROR: ggmlR package not found. Install it first:"
+  echo "  remotes::install_github(\"Zabis13/ggmlR\")"
+  exit 1
+fi
+
+echo "* ggmlR lib: ${GGMLR_LIB}"
+echo "* ggmlR include: ${GGMLR_INCLUDE}"
+
+# ---- Resolve OpenMP flags from R's Makeconf ----
+#
+# CRAN R CMD check enforces strict pairing of SHLIB_OPENMP_*FLAGS macros.
+# For mixed C/C++ packages this creates conflicts. Solution: resolve flags
+# at configure time (same approach as RcppArmadillo and ggmlR).
+
+MAKECONF="${R_HOME}/etc/Makeconf"
+OPENMP_CFLAGS=""
+OPENMP_CXXFLAGS=""
+OPENMP_CPPFLAGS=""
+
+if [ -f "$MAKECONF" ]; then
+  OPENMP_CFLAGS=$(grep '^SHLIB_OPENMP_CFLAGS' "$MAKECONF" | sed 's/[^=]*= *//')
+  OPENMP_CXXFLAGS=$(grep '^SHLIB_OPENMP_CXXFLAGS' "$MAKECONF" | sed 's/[^=]*= *//')
+fi
+
+if [ -n "$OPENMP_CFLAGS" ] || [ -n "$OPENMP_CXXFLAGS" ]; then
+  OPENMP_CPPFLAGS="-DGGML_USE_OPENMP"
+  echo "* OpenMP: enabled (C: ${OPENMP_CFLAGS}, C++: ${OPENMP_CXXFLAGS})"
+else
+  echo "* OpenMP: not available"
+fi
+
+# ---- Auto-detect Vulkan support ----
+
+VULKAN_CPPFLAGS=""
+VULKAN_LIBS=""
+
+GGMLR_HAS_VULKAN=$($RSCRIPT -e 'out <- capture.output(ggmlR::ggml_vulkan_status()); if (any(grepl("AVAILABLE", out))) cat("yes") else cat("no")' 2>/dev/null)
+
+if [ "$GGMLR_HAS_VULKAN" = "yes" ]; then
+  if pkg-config --exists vulkan 2>/dev/null; then
+    VULKAN_CPPFLAGS="-DSD_USE_VULKAN $(pkg-config --cflags vulkan)"
+    VULKAN_LIBS="$(pkg-config --libs vulkan)"
+    echo "* Vulkan: enabled (detected via ggmlR and pkg-config)"
+  elif [ -f /usr/lib/libvulkan.so ] || [ -f /usr/lib/x86_64-linux-gnu/libvulkan.so ]; then
+    VULKAN_CPPFLAGS="-DSD_USE_VULKAN"
+    VULKAN_LIBS="-lvulkan"
+    echo "* Vulkan: enabled (detected via ggmlR, system libvulkan)"
+  else
+    echo "* Vulkan: disabled (ggmlR has Vulkan but libvulkan not found for linking)"
+  fi
+else
+  echo "* Vulkan: disabled (ggmlR Vulkan not available)"
+fi
+
+# ---- Generate src/Makevars from src/Makevars.in ----
+
+sed -e "s|@GGMLR_LIB@|${GGMLR_LIB}|g" \
+    -e "s|@GGMLR_INCLUDE@|${GGMLR_INCLUDE}|g" \
+    -e "s|@VULKAN_CPPFLAGS@|${VULKAN_CPPFLAGS}|g" \
+    -e "s|@VULKAN_LIBS@|${VULKAN_LIBS}|g" \
+    -e "s|@OPENMP_CPPFLAGS@|${OPENMP_CPPFLAGS}|g" \
+    -e "s|@OPENMP_CFLAGS@|${OPENMP_CFLAGS}|g" \
+    -e "s|@OPENMP_CXXFLAGS@|${OPENMP_CXXFLAGS}|g" \
+    src/Makevars.in > src/Makevars
+
+echo "* Wrote src/Makevars"

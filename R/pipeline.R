@@ -112,6 +112,9 @@ sd_ctx <- function(model_path,
 #' @param eta Eta parameter for DDIM-like samplers
 #' @param control_image Optional control image for ControlNet (sd_image format)
 #' @param control_strength ControlNet strength (default 0.9)
+#' @param vae_tiling Enable tiled VAE decode to reduce VRAM usage (default FALSE)
+#' @param vae_tile_size Tile size in latent pixels for tiled VAE (default 64)
+#' @param vae_tile_overlap Overlap ratio between tiles, 0.0-0.5 (default 0.25)
 #' @return List of SD images. Each image is a list with
 #'   width, height, channel, and data (raw vector of RGB pixels).
 #'   Use \code{\link{sd_save_image}} to save or \code{\link{sd_image_to_array}} to convert.
@@ -130,7 +133,10 @@ sd_txt2img <- function(ctx,
                        clip_skip = -1L,
                        eta = 0.0,
                        control_image = NULL,
-                       control_strength = 0.9) {
+                       control_strength = 0.9,
+                       vae_tiling = FALSE,
+                       vae_tile_size = 64L,
+                       vae_tile_overlap = 0.25) {
   params <- list(
     prompt = prompt,
     negative_prompt = negative_prompt,
@@ -145,7 +151,10 @@ sd_txt2img <- function(ctx,
     clip_skip = as.integer(clip_skip),
     strength = 0.0,
     eta = as.numeric(eta),
-    control_strength = as.numeric(control_strength)
+    control_strength = as.numeric(control_strength),
+    vae_tiling = isTRUE(vae_tiling),
+    vae_tile_size = as.integer(vae_tile_size),
+    vae_tile_overlap = as.numeric(vae_tile_overlap)
   )
   if (!is.null(control_image)) {
     params$control_image <- control_image
@@ -176,7 +185,10 @@ sd_img2img <- function(ctx,
                        scheduler = SCHEDULER$DISCRETE,
                        clip_skip = -1L,
                        strength = 0.75,
-                       eta = 0.0) {
+                       eta = 0.0,
+                       vae_tiling = FALSE,
+                       vae_tile_size = 64L,
+                       vae_tile_overlap = 0.25) {
   if (is.null(width)) width <- init_image$width
   if (is.null(height)) height <- init_image$height
 
@@ -194,7 +206,10 @@ sd_img2img <- function(ctx,
     scheduler = as.integer(scheduler),
     clip_skip = as.integer(clip_skip),
     strength = as.numeric(strength),
-    eta = as.numeric(eta)
+    eta = as.numeric(eta),
+    vae_tiling = isTRUE(vae_tiling),
+    vae_tile_size = as.integer(vae_tile_size),
+    vae_tile_overlap = as.numeric(vae_tile_overlap)
   )
 
   sd_generate_image(ctx, params)

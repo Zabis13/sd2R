@@ -5,3 +5,4 @@ rm -f src/*.o src/*.so src/*.dll
 rm -f src/sd/*.o
 rm -f src/sd/thirdparty/*.o
 rm -f src/Makevars
+

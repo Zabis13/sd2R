@@ -1,7 +1,7 @@
 #ifndef __ORDERED_MAP_HPP__
 #define __ORDERED_MAP_HPP__
 
-#include <iostream>
+// #include <iostream>  // removed for CRAN (std::cout symbol)
 #include <list>
 #include <string>
 #include <unordered_map>

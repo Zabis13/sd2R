@@ -7,3 +7,7 @@
 ^vignettes/articles$
 ^\.claude$
 ^TODO\.md$
+^src/sd/vocab\.hpp$
+^src/sd/vocab_mistral\.hpp$
+^src/sd/vocab_qwen\.hpp$
+^src/sd/vocab_umt5\.hpp$

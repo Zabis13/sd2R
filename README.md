@@ -31,13 +31,42 @@ sdR exposes a high-level R interface for text-to-image and image-to-image genera
 
 To meet CRAN size limits and policy requirements, sdR plans to:
 
-- Download large tokenizer vocabularies (CLIP, Mistral, Qwen, UMT5) at install time or on first use instead of bundling them in the source tarball.
 - Ship complete Rd documentation and vignettes for common workflows (txt2img, img2img, GPU configuration).
-- Include a `SystemRequirements` field describing the optional Vulkan GPU backend and supported platforms.
+
+Large tokenizer vocabularies (CLIP, Mistral, Qwen, UMT5) are downloaded automatically during installation from [GitHub Releases](https://github.com/Zabis13/sdR/releases/tag/assets), keeping the source tarball small.
+
+## Installation
+
+```r
+# Install ggmlR first (if not already installed)
+remotes::install_github("Zabis13/ggmlR")
+
+# Install sdR
+remotes::install_github("Zabis13/sdR")
+```
+
+During installation, the `configure` script automatically downloads tokenizer vocabulary files (~128 MB total) from GitHub Releases. This requires `curl` or `wget`.
+
+### Offline / Manual Installation
+
+If you don't have internet access during installation, download the vocabulary files manually and place them into `src/sd/` before building:
+
+```sh
+# Download from https://github.com/Zabis13/sdR/releases/tag/assets
+# Files: vocab.hpp, vocab_mistral.hpp, vocab_qwen.hpp, vocab_umt5.hpp
+
+wget https://github.com/Zabis13/sdR/releases/download/assets/vocab.hpp -P src/sd/
+wget https://github.com/Zabis13/sdR/releases/download/assets/vocab_mistral.hpp -P src/sd/
+wget https://github.com/Zabis13/sdR/releases/download/assets/vocab_qwen.hpp -P src/sd/
+wget https://github.com/Zabis13/sdR/releases/download/assets/vocab_umt5.hpp -P src/sd/
+
+R CMD INSTALL .
+```
 
 ## System Requirements
 
 - R ≥ 4.1.0, C++17 compiler
+- `curl` or `wget` (for downloading vocabulary files during installation)
 - **Optional GPU**: `libvulkan-dev` + `glslc` (Linux) or Vulkan SDK (Windows)
 - Platforms: Linux, macOS, Windows (x86-64, ARM64)
 

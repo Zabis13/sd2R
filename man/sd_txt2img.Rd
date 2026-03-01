@@ -19,7 +19,10 @@ sd_txt2img(
   clip_skip = -1L,
   eta = 0,
   control_image = NULL,
-  control_strength = 0.9
+  control_strength = 0.9,
+  vae_tiling = FALSE,
+  vae_tile_size = 64L,
+  vae_tile_overlap = 0.25
 )
 }
 \arguments{
@@ -52,6 +55,12 @@ sd_txt2img(
 \item{control_image}{Optional control image for ControlNet (sd_image format)}
 
 \item{control_strength}{ControlNet strength (default 0.9)}
+
+\item{vae_tiling}{Enable tiled VAE decode to reduce VRAM usage (default FALSE)}
+
+\item{vae_tile_size}{Tile size in latent pixels for tiled VAE (default 64)}
+
+\item{vae_tile_overlap}{Overlap ratio between tiles, 0.0-0.5 (default 0.25)}
 }
 \value{
 List of SD images. Each image is a list with

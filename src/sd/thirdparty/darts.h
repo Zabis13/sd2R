@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <exception>
 #include <new>
-#include <iostream>
+// #include <iostream>  // removed for CRAN (std::cout symbol)
 
 #define DARTS_VERSION "0.32"
 
@@ -1141,7 +1141,6 @@ inline void DawgBuilder::insert(const char *key, std::size_t length,
   if (value < 0) {
     DARTS_THROW("failed to insert key: negative value");
   } else if (length == 0) {
-    std::cout << value << std::endl;
     DARTS_THROW("failed to insert key: zero-length key");
   }
 

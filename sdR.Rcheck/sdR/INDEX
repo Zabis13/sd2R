@@ -1,0 +1,16 @@
+LORA_APPLY_MODE         LoRA apply modes
+PREDICTION              Prediction types
+RNG_TYPE                RNG types
+SAMPLE_METHOD           Sampling methods
+SCHEDULER               Schedulers
+SD_CACHE_MODE           Cache modes
+SD_TYPE                 Weight types (ggml quantization types)
+sd_convert              Convert model to different quantization format
+sd_ctx                  Create a Stable Diffusion context
+sd_image_to_array       Convert SD image to R numeric array
+sd_img2img              Generate images with img2img
+sd_load_image           Load image from file as SD image
+sd_save_image           Save SD image to PNG file
+sd_system_info          Get system information
+sd_txt2img              Generate images from text prompt
+sd_upscale_image        Upscale an image using ESRGAN

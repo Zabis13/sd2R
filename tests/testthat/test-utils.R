@@ -51,6 +51,27 @@ test_that("sd_ctx rejects missing model", {
   expect_error(sd_ctx("/nonexistent/model.safetensors"), "not found")
 })
 
+test_that("sd_txt2img accepts vae_tiling parameters", {
+  # Verify that the function signature accepts tiling params without error
+  args <- formals(sd_txt2img)
+  expect_true("vae_tiling" %in% names(args))
+  expect_true("vae_tile_size" %in% names(args))
+  expect_true("vae_tile_overlap" %in% names(args))
+  expect_false(eval(args$vae_tiling))
+  expect_equal(eval(args$vae_tile_size), 64L)
+  expect_equal(eval(args$vae_tile_overlap), 0.25)
+})
+
+test_that("sd_img2img accepts vae_tiling parameters", {
+  args <- formals(sd_img2img)
+  expect_true("vae_tiling" %in% names(args))
+  expect_true("vae_tile_size" %in% names(args))
+  expect_true("vae_tile_overlap" %in% names(args))
+  expect_false(eval(args$vae_tiling))
+  expect_equal(eval(args$vae_tile_size), 64L)
+  expect_equal(eval(args$vae_tile_overlap), 0.25)
+})
+
 test_that("sd_load_image and sd_image_to_array roundtrip", {
   skip_if_not_installed("png")
   # Create a small test image

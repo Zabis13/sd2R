@@ -19,7 +19,10 @@ sd_img2img(
   scheduler = SCHEDULER$DISCRETE,
   clip_skip = -1L,
   strength = 0.75,
-  eta = 0
+  eta = 0,
+  vae_tiling = FALSE,
+  vae_tile_size = 64L,
+  vae_tile_overlap = 0.25
 )
 }
 \arguments{
@@ -53,6 +56,12 @@ to load from file.}
 \item{strength}{Denoising strength (0.0 = no change, 1.0 = full denoise, default 0.75)}
 
 \item{eta}{Eta parameter for DDIM-like samplers}
+
+\item{vae_tiling}{Enable tiled VAE decode to reduce VRAM usage (default FALSE)}
+
+\item{vae_tile_size}{Tile size in latent pixels for tiled VAE (default 64)}
+
+\item{vae_tile_overlap}{Overlap ratio between tiles, 0.0-0.5 (default 0.25)}
 }
 \value{
 List of SD images

@@ -224,6 +224,18 @@ Rcpp::List sd_generate_image(SEXP ctx_sexp, Rcpp::List params) {
     if (params.containsElementNamed("eta"))
         p.sample_params.eta = Rcpp::as<float>(params["eta"]);
 
+    // VAE tiling
+    if (params.containsElementNamed("vae_tiling") && Rcpp::as<bool>(params["vae_tiling"])) {
+        p.vae_tiling_params.enabled = true;
+        if (params.containsElementNamed("vae_tile_size")) {
+            int ts = Rcpp::as<int>(params["vae_tile_size"]);
+            p.vae_tiling_params.tile_size_x = ts;
+            p.vae_tiling_params.tile_size_y = ts;
+        }
+        if (params.containsElementNamed("vae_tile_overlap"))
+            p.vae_tiling_params.target_overlap = Rcpp::as<float>(params["vae_tile_overlap"]);
+    }
+
     // Init image (for img2img)
     if (params.containsElementNamed("init_image") && !Rf_isNull(params["init_image"])) {
         p.init_image = r_to_sd_image(Rcpp::as<Rcpp::List>(params["init_image"]));

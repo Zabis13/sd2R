@@ -33,27 +33,23 @@
 
 ## Осталось
 
-### 1. [ ] Вынести vocab*.hpp из пакета (128 МБ) — БЛОКЕР для CRAN
-- vocab.hpp (29 MB) — CLIP токенизатор (SD 1.x, SD 2.x, SDXL)
-- vocab_mistral.hpp (35 MB) — Mistral текст-энкодер
-- vocab_qwen.hpp (10 MB) — Qwen текст-энкодер
-- vocab_umt5.hpp (54 MB) — UMT5 токенизатор (SD3, Flux)
-- Найти источник оригинальных данных (upstream sd.cpp / HuggingFace)
-- Реализовать скачивание при configure или первом запуске
-- CRAN лимит на tarball: 5 МБ
+### 1. [x] Вынести vocab*.hpp из пакета (128 МБ) — БЛОКЕР для CRAN
+- Реализовано: скачивание в configure из GitHub Releases
+- URL: https://github.com/Zabis13/sdR/releases/tag/assets
+- Файлы убраны из git (`.git/info/exclude`), при сборке доступны devtools
+- configure скачивает только если файлов нет на диске
 
 ### 2. [ ] Уменьшить размер пакета до CRAN лимита (5 МБ)
 - Проверить размер без vocab файлов
 - Убедиться что остальные исходники (ggml, sd.cpp) укладываются
 
-### 3. [ ] Настроить configure скрипт для скачивания зависимостей
-- Скачивание vocab файлов при установке
-- Fallback и информативные сообщения об ошибках
+### 3. [x] Настроить configure скрипт для скачивания зависимостей
+- Реализовано в configure: curl/wget, проверка наличия, fallback с инструкцией
 
 ### 4. [ ] Подготовить DESCRIPTION и документацию для CRAN
 - License, SystemRequirements, URL, BugReports
 - Документация всех экспортируемых функций
-- Vignettes
+
 
 ### 5. [ ] R CMD check --as-cran
 - Зависит от задач 1–4
@@ -67,16 +63,135 @@
 - Проверить img2img, upscaler
 - Конвертация изображений (sd_image_t ↔ R raw vector)
 
-## Ключевые файлы
+### 8. High-res генерация: tiled VAE → tiled pipeline → tiled sampling
 
-| Файл | Назначение |
-|------|-----------|
-| src/sd/stable-diffusion.h | Публичный C API |
-| src/sd/stable-diffusion.cpp | Главная реализация (~3800 строк) |
-| src/sd/model.cpp | Загрузка моделей (safetensors, gguf) |
-| src/sd/ggml_extend.hpp | Мост SD ↔ ggml |
-| src/sdR_interface.cpp | Rcpp обёртки с XPtr |
-| src/Makevars | Сборка: sd/*.cpp + libggml.a |
-| R/pipeline.R | Пользовательский API |
-| R/zzz.R | Константы, .onLoad |
-| R/image_utils.R | I/O изображений |
+Три этапа, каждый строится поверх предыдущего.
+
+#### 8a. [ ] Честный streaming tiled VAE (encode/decode)
+**Цель:** encode/decode не держат весь латент/картинку целиком в памяти.
+
+**C++ (src/sd/):**
+- Аудит `decode_first_stage()` и `vae_encode()`: найти и убрать скрытые full-frame буферы
+- Свести VAE к паттерну:
+  1. Вырезать один тайл латента/изображения
+  2. Прогнать через VAE (CPU/GPU)
+  3. Сразу записать в результирующий буфер с блендингом перекрытий
+  4. Перейти к следующему тайлу
+- Блендинг: линейные весовые маски по краям, использует только текущий тайл + уже построенную область выхода
+- Проверить `sd_tiling_non_square()` в `ggml_extend.hpp` — нет ли там промежуточного полного буфера
+
+**R (pipeline.R):**
+- Пробросить все `sd_tiling_params_t` и offload-флаги через Rcpp (частично сделано)
+- Добавить `vae_mode = c("normal", "tiled")` с документацией ограничений
+- Тесты: decode 4096x4096 латента не должен падать по VRAM
+
+#### 8b. [ ] High-res pipeline без tiled sampling (промежуточный путь)
+**Цель:** генерация больших картинок (2K, 4K) уже сейчас, без tiled UNet.
+
+**Стратегия: генерация патчей → сшивка → tiled VAE decode:**
+1. Разбить целевое изображение на сетку патчей (напр. 512x512 или 1024x1024)
+2. Для каждого патча: обычный `sd_txt2img()` в безопасном разрешении
+3. Опционально: `sd_img2img()` с низкой strength для гармонизации стыков
+4. Сшить пиксели на R-уровне (панорама, квадратная сетка)
+5. Финальный decode/encode через tiled VAE — не ограничивает по разрешению
+
+**R API:**
+```r
+sd_txt2img_highres(
+  ctx, prompt,
+  width = 2048, height = 2048,  # целевой размер
+  tile = 512,                    # размер патча для UNet
+  overlap = 64,                  # перекрытие патчей
+  upscale_factor = NULL,         # опциональный ESRGAN апскейл
+  img2img_strength = 0.3,        # strength для гармонизации
+  vae_tiling = TRUE,             # tiled VAE для encode/decode
+  ...
+)
+```
+
+**Альтернативный простой путь (без сшивки):**
+- `sd_txt2img()` на 512x512 → ESRGAN upscale до 2048x2048 → `sd_img2img()` с tiled VAE
+
+#### 8c. [ ] Настоящий tiled sampling (MultiDiffusion-подход)
+**Цель:** UNet обрабатывает латент по тайлам, VRAM зависит только от размера тайла.
+
+**C++ API:**
+```cpp
+// Новая функция в stable-diffusion.cpp
+ggml_tensor* sample_tiled(
+    ggml_context* work_ctx,
+    ggml_tensor* init_latent,      // глобальное латентное полотно (логически большое)
+    int tile_size,                  // размер тайла в латентном пространстве (напр. 64 = 512px)
+    float tile_overlap,             // перекрытие (0.0-0.5)
+    SDCondition cond, SDCondition uncond,
+    sample_method_t method,
+    const std::vector<float>& sigmas,
+    sd_guidance_params_t guidance
+);
+```
+
+**Алгоритм (на каждом шаге деноизинга):**
+1. Создать глобальный `noise_pred` буфер (нули) + `weight_map` (нули)
+2. Для каждого тайла в сетке:
+   - Вырезать подлатент из глобального `x_t`
+   - Запустить UNet только на этот тайл (фиксированный размер → фиксированный VRAM)
+   - Умножить на весовую маску (Гаусс или линейная от центра тайла)
+   - Прибавить в `noise_pred` и `weight_map`
+3. `noise_pred /= weight_map` — нормализация
+4. Применить scheduler step: `x_t → x_{t-1}`
+
+**Блендинг тайлов:**
+- Перекрытие: 25-50% от размера тайла
+- Весовая маска: Гаусс или линейная, максимум в центре тайла, плавное затухание к краям
+- Идеи из MultiDiffusion / Tiled Diffusion / Ultimate SD Upscaler
+
+**R API:**
+```r
+sd_txt2img_tiled(
+  ctx, prompt,
+  width = 2048, height = 2048,
+  tile_size = 64,        # латентных пикселей (= 512 реальных для SD1.5)
+  tile_overlap = 0.25,
+  vae_tiling = TRUE,     # обязательно для больших размеров
+  ...
+)
+```
+
+**Зависимости:** требует работающий streaming tiled VAE (8a)
+
+#### Порядок реализации
+1. **8a** — честный tiled VAE (сейчас, C++ аудит + R проброс)
+2. **8b** — high-res pipeline на R-уровне (сразу после 8a, без C++ изменений)
+3. **8c** — tiled sampling (крупный эпик, C++ рефакторинг семплера)
+
+### 9. [ ] Multi-GPU inference
+- Один sd_ctx работает с одной GPU (выбор через env `SD_VK_DEVICE`)
+- Стратегия: несколько процессов, по контексту на GPU, без склейки VRAM
+- Каждая GPU держит полную копию модели (~2-3 ГБ для SD 1.5)
+
+**R API:**
+```r
+sd_txt2img_multi_gpu(
+  model_path,          # путь к модели
+  prompts,             # вектор промптов
+  devices = 0:1,       # индексы GPU
+  seeds = NULL,        # сиды (по умолчанию случайные)
+  ...                  # остальные параметры sd_txt2img
+)
+```
+
+**Реализация (только R-слой, C++ не трогаем):**
+1. Разбить prompts/seeds на N частей по числу devices
+2. Запустить N процессов, каждый с `Sys.setenv(SD_VK_DEVICE = i)`
+3. В каждом процессе: `sd_ctx()` → `sd_txt2img()` → вернуть результат
+4. Собрать результаты в один список
+
+**Параллелизм:**
+- Linux/macOS: `parallel::mclapply()` (forking)
+- Кроссплатформенно: `callr::r_bg()` или `future`
+
+**Открытые вопросы:**
+- Проверить какая env-переменная реально работает (`SD_VK_DEVICE` / `GGML_VK_DEVICE`)
+- Масштабирование: линейное при хорошем I/O, bottleneck — загрузка модели на каждую GPU
+
+

@@ -1,0 +1,126 @@
+* installing *source* package ‘sdR’ ...
+** using staged installation
+* Downloading vocab.hpp...
+* vocab.hpp: downloaded successfully
+* Downloading vocab_mistral.hpp...
+* vocab_mistral.hpp: downloaded successfully
+* Downloading vocab_qwen.hpp...
+* vocab_qwen.hpp: downloaded successfully
+* Downloading vocab_umt5.hpp...
+* vocab_umt5.hpp: downloaded successfully
+* ggmlR lib: /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/lib
+* ggmlR include: /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include
+* OpenMP: enabled (C: -fopenmp, C++: -fopenmp)
+* Vulkan: enabled (detected via ggmlR and pkg-config)
+* Wrote src/Makevars
+** libs
+using C++ compiler: ‘g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0’
+using C++17
+g++ -std=gnu++17 -I"/usr/share/R/include" -DNDEBUG -Isd -Isd/thirdparty -DGGML_USE_CPU -D_GNU_SOURCE -DGGML_MAX_NAME=128 -DGGML_R_PACKAGE -include /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h -DGGML_USE_OPENMP -DSD_USE_VULKAN  -DR_GGML_IO_IMPL -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include' -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include'    -fopenmp -fpic  -g -O2 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=. -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -fcf-protection -fdebug-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=/usr/src/r-base-4.3.3-2build2 -Wdate-time -D_FORTIFY_SOURCE=3  -c RcppExports.cpp -o RcppExports.o
+g++ -std=gnu++17 -I"/usr/share/R/include" -DNDEBUG -Isd -Isd/thirdparty -DGGML_USE_CPU -D_GNU_SOURCE -DGGML_MAX_NAME=128 -DGGML_R_PACKAGE -include /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h -DGGML_USE_OPENMP -DSD_USE_VULKAN  -DR_GGML_IO_IMPL -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include' -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include'    -fopenmp -fpic  -g -O2 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=. -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -fcf-protection -fdebug-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=/usr/src/r-base-4.3.3-2build2 -Wdate-time -D_FORTIFY_SOURCE=3  -c sdR_interface.cpp -o sdR_interface.o
+sdR_interface.cpp:1: warning: "R_GGML_IO_IMPL" redefined
+    1 | #define R_GGML_IO_IMPL  // disable r_ggml_compat.h macros (we use R API directly)
+      | 
+<command-line>: note: this is the location of the previous definition
+In file included from /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include/Rcpp.h:47,
+                 from sdR_interface.cpp:3:
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include/Rcpp/XPtr.h: In instantiation of ‘void Rcpp::standard_delete_finalizer(T*) [with T = sd_ctx_t]’:
+sdR_interface.cpp:134:24:   required from here
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include/Rcpp/XPtr.h:31:5: warning: possible problem detected in invocation of ‘operator delete’ [-Wdelete-incomplete]
+   31 |     delete obj;
+      |     ^~~~~~~~~~
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include/Rcpp/XPtr.h:30:35: warning: ‘obj’ has incomplete type
+   30 | void standard_delete_finalizer(T* obj) {                                                                                                // #nocov start
+      |                                ~~~^~~
+In file included from sdR_interface.cpp:4:
+sd/stable-diffusion.h:326:16: note: forward declaration of ‘struct sd_ctx_t’
+  326 | typedef struct sd_ctx_t sd_ctx_t;
+      |                ^~~~~~~~
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include/Rcpp/XPtr.h:31:5: note: neither the destructor nor the class-specific ‘operator delete’ will be called, even if they are declared when the class is defined
+   31 |     delete obj;
+      |     ^~~~~~~~~~
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include/Rcpp/XPtr.h: In instantiation of ‘void Rcpp::standard_delete_finalizer(T*) [with T = upscaler_ctx_t]’:
+sdR_interface.cpp:312:30:   required from here
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include/Rcpp/XPtr.h:31:5: warning: possible problem detected in invocation of ‘operator delete’ [-Wdelete-incomplete]
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include/Rcpp/XPtr.h:30:35: warning: ‘obj’ has incomplete type
+   30 | void standard_delete_finalizer(T* obj) {                                                                                                // #nocov start
+      |                                ~~~^~~
+sd/stable-diffusion.h:374:16: note: forward declaration of ‘struct upscaler_ctx_t’
+  374 | typedef struct upscaler_ctx_t upscaler_ctx_t;
+      |                ^~~~~~~~~~~~~~
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include/Rcpp/XPtr.h:31:5: note: neither the destructor nor the class-specific ‘operator delete’ will be called, even if they are declared when the class is defined
+   31 |     delete obj;
+      |     ^~~~~~~~~~
+g++ -std=gnu++17 -I"/usr/share/R/include" -DNDEBUG -Isd -Isd/thirdparty -DGGML_USE_CPU -D_GNU_SOURCE -DGGML_MAX_NAME=128 -DGGML_R_PACKAGE -include /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h -DGGML_USE_OPENMP -DSD_USE_VULKAN  -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include' -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include'    -fopenmp -fpic  -g -O2 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=. -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -fcf-protection -fdebug-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=/usr/src/r-base-4.3.3-2build2 -Wdate-time -D_FORTIFY_SOURCE=3  -c sd/stable-diffusion.cpp -o sd/stable-diffusion.o
+In file included from /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/ggml-alloc.h:3,
+                 from sd/ggml_extend.hpp:27,
+                 from sd/stable-diffusion.cpp:1:
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/ggml.h:204: warning: "GGML_ATTRIBUTE_FORMAT" redefined
+  204 | #    define GGML_ATTRIBUTE_FORMAT(...) __attribute__((format(printf, __VA_ARGS__)))
+      | 
+In file included from <command-line>:
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h:53: note: this is the location of the previous definition
+   53 | #define GGML_ATTRIBUTE_FORMAT(...)
+      | 
+g++ -std=gnu++17 -I"/usr/share/R/include" -DNDEBUG -Isd -Isd/thirdparty -DGGML_USE_CPU -D_GNU_SOURCE -DGGML_MAX_NAME=128 -DGGML_R_PACKAGE -include /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h -DGGML_USE_OPENMP -DSD_USE_VULKAN  -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include' -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include'    -fopenmp -fpic  -g -O2 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=. -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -fcf-protection -fdebug-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=/usr/src/r-base-4.3.3-2build2 -Wdate-time -D_FORTIFY_SOURCE=3  -c sd/model.cpp -o sd/model.o
+In file included from sd/gguf_reader.hpp:9,
+                 from sd/model.cpp:18:
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/ggml.h:204: warning: "GGML_ATTRIBUTE_FORMAT" redefined
+  204 | #    define GGML_ATTRIBUTE_FORMAT(...) __attribute__((format(printf, __VA_ARGS__)))
+      | 
+In file included from <command-line>:
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h:53: note: this is the location of the previous definition
+   53 | #define GGML_ATTRIBUTE_FORMAT(...)
+      | 
+g++ -std=gnu++17 -I"/usr/share/R/include" -DNDEBUG -Isd -Isd/thirdparty -DGGML_USE_CPU -D_GNU_SOURCE -DGGML_MAX_NAME=128 -DGGML_R_PACKAGE -include /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h -DGGML_USE_OPENMP -DSD_USE_VULKAN  -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include' -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include'    -fopenmp -fpic  -g -O2 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=. -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -fcf-protection -fdebug-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=/usr/src/r-base-4.3.3-2build2 -Wdate-time -D_FORTIFY_SOURCE=3  -c sd/name_conversion.cpp -o sd/name_conversion.o
+In file included from /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/ggml-backend.h:3,
+                 from sd/model.h:14,
+                 from sd/name_conversion.h:6,
+                 from sd/name_conversion.cpp:4:
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/ggml.h:204: warning: "GGML_ATTRIBUTE_FORMAT" redefined
+  204 | #    define GGML_ATTRIBUTE_FORMAT(...) __attribute__((format(printf, __VA_ARGS__)))
+      | 
+In file included from <command-line>:
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h:53: note: this is the location of the previous definition
+   53 | #define GGML_ATTRIBUTE_FORMAT(...)
+      | 
+g++ -std=gnu++17 -I"/usr/share/R/include" -DNDEBUG -Isd -Isd/thirdparty -DGGML_USE_CPU -D_GNU_SOURCE -DGGML_MAX_NAME=128 -DGGML_R_PACKAGE -include /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h -DGGML_USE_OPENMP -DSD_USE_VULKAN  -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include' -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include'    -fopenmp -fpic  -g -O2 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=. -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -fcf-protection -fdebug-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=/usr/src/r-base-4.3.3-2build2 -Wdate-time -D_FORTIFY_SOURCE=3  -c sd/tokenize_util.cpp -o sd/tokenize_util.o
+g++ -std=gnu++17 -I"/usr/share/R/include" -DNDEBUG -Isd -Isd/thirdparty -DGGML_USE_CPU -D_GNU_SOURCE -DGGML_MAX_NAME=128 -DGGML_R_PACKAGE -include /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h -DGGML_USE_OPENMP -DSD_USE_VULKAN  -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include' -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include'    -fopenmp -fpic  -g -O2 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=. -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -fcf-protection -fdebug-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=/usr/src/r-base-4.3.3-2build2 -Wdate-time -D_FORTIFY_SOURCE=3  -c sd/upscaler.cpp -o sd/upscaler.o
+In file included from /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/ggml-alloc.h:3,
+                 from sd/ggml_extend.hpp:27,
+                 from sd/esrgan.hpp:4,
+                 from sd/upscaler.cpp:1:
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/ggml.h:204: warning: "GGML_ATTRIBUTE_FORMAT" redefined
+  204 | #    define GGML_ATTRIBUTE_FORMAT(...) __attribute__((format(printf, __VA_ARGS__)))
+      | 
+In file included from <command-line>:
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h:53: note: this is the location of the previous definition
+   53 | #define GGML_ATTRIBUTE_FORMAT(...)
+      | 
+g++ -std=gnu++17 -I"/usr/share/R/include" -DNDEBUG -Isd -Isd/thirdparty -DGGML_USE_CPU -D_GNU_SOURCE -DGGML_MAX_NAME=128 -DGGML_R_PACKAGE -include /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h -DGGML_USE_OPENMP -DSD_USE_VULKAN  -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include' -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include'    -fopenmp -fpic  -g -O2 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=. -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -fcf-protection -fdebug-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=/usr/src/r-base-4.3.3-2build2 -Wdate-time -D_FORTIFY_SOURCE=3  -c sd/util.cpp -o sd/util.o
+In file included from /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/ggml-alloc.h:3,
+                 from sd/ggml_extend.hpp:27,
+                 from sd/preprocessing.hpp:4,
+                 from sd/util.cpp:17:
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/ggml.h:204: warning: "GGML_ATTRIBUTE_FORMAT" redefined
+  204 | #    define GGML_ATTRIBUTE_FORMAT(...) __attribute__((format(printf, __VA_ARGS__)))
+      | 
+In file included from <command-line>:
+/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h:53: note: this is the location of the previous definition
+   53 | #define GGML_ATTRIBUTE_FORMAT(...)
+      | 
+g++ -std=gnu++17 -I"/usr/share/R/include" -DNDEBUG -Isd -Isd/thirdparty -DGGML_USE_CPU -D_GNU_SOURCE -DGGML_MAX_NAME=128 -DGGML_R_PACKAGE -include /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h -DGGML_USE_OPENMP -DSD_USE_VULKAN  -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include' -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include'    -fopenmp -fpic  -g -O2 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=. -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -fcf-protection -fdebug-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=/usr/src/r-base-4.3.3-2build2 -Wdate-time -D_FORTIFY_SOURCE=3  -c sd/version.cpp -o sd/version.o
+gcc -I"/usr/share/R/include" -DNDEBUG -Isd -Isd/thirdparty -DGGML_USE_CPU -D_GNU_SOURCE -DGGML_MAX_NAME=128 -DGGML_R_PACKAGE -include /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include/r_ggml_compat.h -DGGML_USE_OPENMP -DSD_USE_VULKAN  -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/Rcpp/include' -I'/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include'    -fopenmp -fpic  -g -O2 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=. -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -fcf-protection -fdebug-prefix-map=/build/r-base-FPSnzf/r-base-4.3.3=/usr/src/r-base-4.3.3-2build2 -Wdate-time -D_FORTIFY_SOURCE=3  -c sd/thirdparty/zip.c -o sd/thirdparty/zip.o
+g++ -std=gnu++17 -shared -L/usr/lib/R/lib -Wl,-Bsymbolic-functions -flto=auto -ffat-lto-objects -Wl,-z,relro -o sdR.so RcppExports.o sdR_interface.o sd/stable-diffusion.o sd/model.o sd/name_conversion.o sd/tokenize_util.o sd/upscaler.o sd/util.o sd/version.o sd/thirdparty/zip.o -L/home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/lib -lggml -fopenmp -lvulkan -lpthread -lm -L/usr/lib/R/lib -lR
+installing to /mnt/Data2/DS_projects/sdR/sdR.Rcheck/00LOCK-sdR/00new/sdR/libs
+** R
+** inst
+** byte-compile and prepare package for lazy loading
+** help
+*** installing help indices
+** building package indices
+** testing if installed package can be loaded from temporary location
+** checking absolute paths in shared objects and dynamic libraries
+** testing if installed package can be loaded from final location
+** testing if installed package keeps a record of temporary installation path
+* DONE (sdR)
