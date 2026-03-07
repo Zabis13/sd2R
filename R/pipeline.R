@@ -279,9 +279,9 @@ sd_generate <- function(ctx,
   pixels <- as.numeric(width) * as.numeric(height)
   native_pixels <- as.numeric(native_px) * as.numeric(native_px)
 
-  # Estimated VRAM: model ~2-3 GB + latent proportional to pixel count
-  # SD1.5 512x512 ~ 3 GB, 1024x1024 ~ 5 GB, 2048x2048 ~ 12 GB
-  vram_needed <- 2.5 + pixels / 262144 * 2.5
+  # Estimated VRAM: ~4 GB per 262144 pixels (512x512) with +10% safety margin
+  # 512x512 -> 4.4 GB, 1024x1024 -> 17.6 GB, 2048x2048 -> 70.4 GB
+  vram_needed <- pixels / 262144 * 4.0 * 1.1
 
   if (vram_needed <= vram_gb) return("direct")
 
@@ -1145,7 +1145,7 @@ sd_convert <- function(input_path, output_path, output_type = SD_TYPE$F16,
   switch(vae_mode,
     normal = FALSE,
     tiled  = TRUE,
-    auto   = as.integer(width) * as.integer(height) > as.numeric(vae_auto_threshold)
+    auto   = as.integer(width) * as.integer(height) >= as.numeric(vae_auto_threshold)
   )
 }
 

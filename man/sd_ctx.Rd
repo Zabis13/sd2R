@@ -24,7 +24,8 @@ sd_ctx(
   prediction = NULL,
   lora_apply_mode = LORA_APPLY_MODE$AUTO,
   flow_shift = 0,
-  model_type = "sd1"
+  model_type = "sd1",
+  vram_gb = NULL
 )
 }
 \arguments{
@@ -71,12 +72,17 @@ not reuse the context. Default is FALSE.}
 
 \item{model_type}{Model architecture hint: \code{"sd1"}, \code{"sd2"},
 \code{"sdxl"}, \code{"flux"}, or \code{"sd3"}. Used by
-\code{\link{sd_txt2img_highres}} to determine native tile size
-(512 for SD1/SD2, 1024 for SDXL/Flux/SD3). Default \code{"sd1"}.}
+\code{\link{sd_generate}} to determine native resolution and tile sizes.
+Default \code{"sd1"}.}
+
+\item{vram_gb}{Available VRAM in GB. Used by \code{\link{sd_generate}} to
+auto-select generation strategy (direct vs tiled sampling vs highres fix).
+\code{NULL} = no auto-routing, user must choose function manually.
+Default \code{NULL}.}
 }
 \value{
 An external pointer to the SD context (class "sd_ctx") with
-  attribute \code{model_type}.
+  attributes \code{model_type}, \code{vae_decode_only}, and \code{vram_gb}.
 }
 \description{
 Loads a model and creates a context for image generation.

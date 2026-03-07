@@ -16,8 +16,8 @@ test_that(".resolve_vae_tiling handles 'auto' mode with area threshold", {
   # Below threshold: 512*512 = 262144 < 1048576
   expect_false(sdR:::.resolve_vae_tiling("auto", NULL, 512, 512, threshold))
 
-  # At threshold: 1024*1024 = 1048576, NOT greater than threshold
-  expect_false(sdR:::.resolve_vae_tiling("auto", NULL, 1024, 1024, threshold))
+  # At threshold: 1024*1024 = 1048576, equals threshold -> tile
+  expect_true(sdR:::.resolve_vae_tiling("auto", NULL, 1024, 1024, threshold))
 
   # Above threshold: 1025*1024 = 1049600 > 1048576
   expect_true(sdR:::.resolve_vae_tiling("auto", NULL, 1025, 1024, threshold))
@@ -28,8 +28,8 @@ test_that(".resolve_vae_tiling handles 'auto' mode with area threshold", {
   # 4096*4096 = 16777216 > 1048576
   expect_true(sdR:::.resolve_vae_tiling("auto", NULL, 4096, 4096, threshold))
 
-  # Non-square landscape: 2048*512 = 1048576, NOT greater
-  expect_false(sdR:::.resolve_vae_tiling("auto", NULL, 2048, 512, threshold))
+  # Non-square landscape: 2048*512 = 1048576, equals threshold -> tile
+  expect_true(sdR:::.resolve_vae_tiling("auto", NULL, 2048, 512, threshold))
 
   # Non-square landscape just over: 2048*513 = 1050624 > 1048576
   expect_true(sdR:::.resolve_vae_tiling("auto", NULL, 2048, 513, threshold))

@@ -89,3 +89,4 @@ img <- sd_txt2img_highres(ctx, "a panoramic mountain landscape",
 sd_save_image(img, "panorama.png")
 }
 }
+\keyword{internal}

@@ -15,7 +15,8 @@ sdR exposes a high-level R interface for text-to-image and image-to-image genera
 ## Key Features
 
 - **Unified `sd_generate()`** — single entry point for all generation modes. Automatically selects the optimal strategy (direct, tiled sampling, or highres fix) based on output resolution and available VRAM (`vram_gb` parameter in `sd_ctx()`). Users don't need to think about tiling at all.
-- **VRAM-aware auto-routing**: tile size scales with available VRAM (<4 GB → 256px tiles, 4-8 GB → 512px, 8-16 GB → 768px, >16 GB → direct generation without tiling).
+- **VRAM-aware auto-routing**: estimates VRAM from resolution and routes to direct generation (fits in VRAM), highres fix (txt2img + upscale + tiled img2img, preferred for coherent large images), or tiled sampling (MultiDiffusion fallback). Set `vram_gb` once in `sd_ctx()`.
+- **Multi-GPU**: `sd_generate_multi_gpu()` distributes prompts across Vulkan GPUs via `callr`, one process per GPU, with progress reporting.
 - **Text-to-image** generation supporting Stable Diffusion 1.x models (e.g. SD 1.5) with typical 512x512 generations taking a few seconds on Vulkan-enabled GPUs.
 - **Image-to-image** workflows with noise strength control and reuse of the same denoising pipeline as text-to-image. Requires `vae_decode_only = FALSE` in context.
 - **Optional upscaling** using a dedicated upscaler context managed entirely in C++ and exposed to R through external pointers.

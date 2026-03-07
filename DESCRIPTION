@@ -33,8 +33,9 @@ Description: Provides Stable Diffusion image generation in R using the 'ggmlR'
     strategy selection (direct, tiled sampling, highres fix) based on output
     resolution and available VRAM. High-resolution generation (2K, 4K+) via
     tiled VAE decoding, tiled diffusion sampling (MultiDiffusion), and classic
-    highres fix (txt2img + upscale + tiled img2img). Supports CPU and Vulkan
-    GPU backends.
+    highres fix (txt2img + upscale + tiled img2img). Multi-GPU parallel
+    generation via 'sd_generate_multi_gpu()'. Supports CPU and Vulkan GPU
+    backends.
 SystemRequirements: GNU make, curl or wget (for downloading vocabulary files during installation)
 License: MIT + file LICENSE
 URL: https://github.com/Zabis13/sdR

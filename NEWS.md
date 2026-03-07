@@ -16,8 +16,10 @@
 ## Multi-GPU
 * New `sd_generate_multi_gpu()` — parallel generation across multiple Vulkan
   GPUs. Each prompt runs in a separate process via `callr`, with
-  `SD_VK_DEVICE` selecting the GPU. Prompts distributed round-robin across
-  devices. Requires the `callr` package.
+  `SD_VK_DEVICE` selecting the GPU. Worker pool limited to `length(devices)`
+  concurrent processes (one per GPU). Prompts distributed round-robin as GPUs
+  become free. `progress = TRUE` prints `[3/100] GPU0: done` per completion.
+  Requires the `callr` package.
 
 ## Performance
 * Batch compute optimization for tiled sampling: pre-allocated compute context
@@ -25,6 +27,16 @@
   instead of `ggml_free()` + `ggml_init()` for context reuse.
 
 ## Bug Fixes
+* **VRAM estimation formula** corrected: `pixels / 262144 * 4.0 * 1.1` (with
+  +10% safety margin). Old formula underestimated VRAM for 1024x1024 (12.5 GB
+  vs actual ~17 GB), causing OOM on 16 GB GPUs.
+* **VAE auto-tiling threshold** changed from `>` to `>=`: images exactly at
+  the threshold (e.g. 1024x1024 = 1048576 pixels) now correctly use tiled VAE
+  instead of OOM.
+* **Highres fix priority**: for txt2img, highres fix is now preferred over
+  tiled sampling when VAE encoder is available (`pixels > native_pixels`,
+  was `pixels > native_pixels * 4`). Tiled sampling without base image
+  produces incoherent "collage" artifacts.
 * `.native_tile_size()` for SD1/SD2 corrected from 768 to 512 (native model
   resolution).
 
