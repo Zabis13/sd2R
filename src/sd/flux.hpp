@@ -262,7 +262,7 @@ namespace Flux {
                           bool mlp_proj_bias    = true,
                           bool use_yak_mlp      = false,
                           bool use_mlp_silu_act = false)
-            : idx(idx), prune_mod(prune_mod) {
+            : prune_mod(prune_mod), idx(idx) {
             int64_t mlp_hidden_dim = static_cast<int64_t>(hidden_size * mlp_ratio);
 
             if (!prune_mod && !share_modulation) {
@@ -433,7 +433,7 @@ namespace Flux {
                           bool mlp_proj_bias    = true,
                           bool use_yak_mlp      = false,
                           bool use_mlp_silu_act = false)
-            : hidden_size(hidden_size), num_heads(num_heads), idx(idx), prune_mod(prune_mod), use_yak_mlp(use_yak_mlp), use_mlp_silu_act(use_mlp_silu_act) {
+            : num_heads(num_heads), hidden_size(hidden_size), prune_mod(prune_mod), idx(idx), use_yak_mlp(use_yak_mlp), use_mlp_silu_act(use_mlp_silu_act) {
             int64_t head_dim = hidden_size / num_heads;
             float scale      = qk_scale;
             if (scale <= 0.f) {

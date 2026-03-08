@@ -85,12 +85,12 @@ directly).
 }
 \examples{
 \dontrun{
-# Simple — auto-routes based on vram_gb
+# Simple — auto-routes based on detected VRAM
 ctx <- sd_ctx("model.safetensors", model_type = "sd1",
-              vram_gb = 16, vae_decode_only = FALSE)
+              vae_decode_only = FALSE)
 imgs <- sd_generate(ctx, "a cat", width = 2048, height = 2048)
 
-# With 4 GB VRAM — will auto-select tiled sampling
+# Manual override — force 4 GB VRAM limit
 ctx4 <- sd_ctx("model.safetensors", model_type = "sd1",
                vram_gb = 4, vae_decode_only = FALSE)
 imgs <- sd_generate(ctx4, "a cat", width = 2048, height = 2048)

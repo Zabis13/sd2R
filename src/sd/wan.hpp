@@ -603,12 +603,12 @@ namespace WAN {
                   int num_res_blocks                    = 2,
                   std::vector<bool> temperal_downsample = {false, true, true},
                   bool wan2_2                           = false)
-            : dim(dim),
+            : wan2_2(wan2_2),
+              dim(dim),
               z_dim(z_dim),
               dim_mult(dim_mult),
               num_res_blocks(num_res_blocks),
-              temperal_downsample(temperal_downsample),
-              wan2_2(wan2_2) {
+              temperal_downsample(temperal_downsample) {
             // attn_scales is always []
             std::vector<int64_t> dims = {dim};
             for (int u : dim_mult) {
@@ -766,12 +766,12 @@ namespace WAN {
                   int num_res_blocks                  = 2,
                   std::vector<bool> temperal_upsample = {true, true, false},
                   bool wan2_2                         = false)
-            : dim(dim),
+            : wan2_2(wan2_2),
+              dim(dim),
               z_dim(z_dim),
               dim_mult(dim_mult),
               num_res_blocks(num_res_blocks),
-              temperal_upsample(temperal_upsample),
-              wan2_2(wan2_2) {
+              temperal_upsample(temperal_upsample) {
             // attn_scales is always []
             std::vector<int64_t> dims = {dim_mult[dim_mult.size() - 1] * dim};
             for (int i = static_cast<int>(dim_mult.size()) - 1; i >= 0; i--) {
@@ -949,7 +949,7 @@ namespace WAN {
 
     public:
         WanVAE(bool decode_only = true, bool wan2_2 = false)
-            : decode_only(decode_only), wan2_2(wan2_2) {
+            : wan2_2(wan2_2), decode_only(decode_only) {
             // attn_scales is always []
             if (wan2_2) {
                 dim     = 160;
@@ -1119,7 +1119,7 @@ namespace WAN {
                      const std::string prefix                       = "",
                      bool decode_only                               = false,
                      SDVersion version                              = VERSION_WAN2)
-            : decode_only(decode_only), ae(decode_only, version == VERSION_WAN2_2_TI2V), VAE(backend, offload_params_to_cpu) {
+            : VAE(backend, offload_params_to_cpu), decode_only(decode_only), ae(decode_only, version == VERSION_WAN2_2_TI2V) {
             ae.init(params_ctx, tensor_storage_map, prefix);
         }
 

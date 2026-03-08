@@ -1,23 +1,21 @@
 CXX_STD = CXX17
 
-# All paths and flags resolved by configure (no $(shell) calls)
-GGMLR_LIB = /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/lib
-GGMLR_INCLUDE = /home/yuri/R/x86_64-pc-linux-gnu-library/4.3/ggmlR/include
-VULKAN_CPPFLAGS = -DSD_USE_VULKAN 
-VULKAN_LIBS = -lvulkan 
-OPENMP_CPPFLAGS = -DGGML_USE_OPENMP
-OPENMP_CFLAGS = -fopenmp
-OPENMP_CXXFLAGS = -fopenmp
+# Enable C99 format specifiers (%zu, %zd) on MinGW
+PKG_CPPFLAGS_WIN = -D__USE_MINGW_ANSI_STDIO=1
+
+# Get ggmlR paths dynamically
+GGMLR_INCLUDE = $(shell "$(R_HOME)/bin/Rscript" -e "cat(system.file('include', package='ggmlR'))")
+GGMLR_LIB = $(shell "$(R_HOME)/bin/Rscript" -e "cat(system.file('lib', package='ggmlR'))")
 
 PKG_CPPFLAGS = -Isd -Isd/thirdparty \
   -DGGML_USE_CPU -D_GNU_SOURCE \
   -DGGML_MAX_NAME=128 \
   -DGGML_R_PACKAGE -include $(GGMLR_INCLUDE)/r_ggml_compat.h \
-  $(OPENMP_CPPFLAGS) $(VULKAN_CPPFLAGS)
+  $(PKG_CPPFLAGS_WIN)
 
-PKG_CXXFLAGS = $(OPENMP_CXXFLAGS)
-PKG_CFLAGS = $(OPENMP_CFLAGS)
-PKG_LIBS = -L$(GGMLR_LIB) -lggml $(OPENMP_CXXFLAGS) $(VULKAN_LIBS) -lpthread -lm
+PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
+PKG_CFLAGS = $(SHLIB_OPENMP_CFLAGS)
+PKG_LIBS = -L$(GGMLR_LIB) -lggml $(SHLIB_OPENMP_CXXFLAGS) -lpthread -lm
 
 SD_OBJECTS = \
   sd/stable-diffusion.o \

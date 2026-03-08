@@ -82,7 +82,7 @@ void non_max_supression(struct ggml_tensor* result, struct ggml_tensor* G, struc
     for (int iy = 1; iy < result->ne[1] - 1; iy++) {
         for (int ix = 1; ix < result->ne[0] - 1; ix++) {
             float angle = ggml_ext_tensor_get_f32(D, ix, iy) * 180.0f / M_PI_;
-            angle       = angle < 0.0f ? angle += 180.0f : angle;
+            angle       = angle < 0.0f ? angle + 180.0f : angle;
             float q     = 1.0f;
             float r     = 1.0f;
 

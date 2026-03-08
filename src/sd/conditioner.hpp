@@ -1398,7 +1398,7 @@ struct T5CLIPEmbedder : public Conditioner {
                    bool use_mask                                  = false,
                    int mask_pad                                   = 1,
                    bool is_umt5                                   = false)
-        : use_mask(use_mask), mask_pad(mask_pad), t5_tokenizer(is_umt5) {
+        : t5_tokenizer(is_umt5), use_mask(use_mask), mask_pad(mask_pad) {
         bool use_t5 = false;
         for (auto pair : tensor_storage_map) {
             if (pair.first.find("text_encoders.t5xxl") != std::string::npos) {

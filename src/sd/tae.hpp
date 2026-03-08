@@ -556,9 +556,9 @@ struct TinyImageAutoEncoder : public TinyAutoEncoder {
                          const std::string prefix,
                          bool decoder_only = true,
                          SDVersion version = VERSION_SD1)
-        : decode_only(decoder_only),
+        : TinyAutoEncoder(backend, offload_params_to_cpu),
           taesd(decoder_only, version),
-          TinyAutoEncoder(backend, offload_params_to_cpu) {
+          decode_only(decoder_only) {
         taesd.init(params_ctx, tensor_storage_map, prefix);
     }
 
@@ -629,9 +629,9 @@ struct TinyVideoAutoEncoder : public TinyAutoEncoder {
                          const std::string prefix,
                          bool decoder_only = true,
                          SDVersion version = VERSION_WAN2)
-        : decode_only(decoder_only),
+        : TinyAutoEncoder(backend, offload_params_to_cpu),
           taehv(decoder_only, version),
-          TinyAutoEncoder(backend, offload_params_to_cpu) {
+          decode_only(decoder_only) {
         taehv.init(params_ctx, tensor_storage_map, prefix);
     }
 

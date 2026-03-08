@@ -20,8 +20,8 @@ show_image <- function(img, filename) {
 }
 
 # --- 1. Basic 512x512 (direct) ---
-cat("\n--- 1. Basic 512x512, vram_gb=16 -> direct ---\n")
-ctx <- sd_ctx(model_path, n_threads = 4L, model_type = "sd1", vram_gb = 16)
+cat("\n--- 1. Basic 512x512 -> direct ---\n")
+ctx <- sd_ctx(model_path, n_threads = 4L, model_type = "sd1")
 t0 <- proc.time()
 imgs <- sd_generate(
   ctx,
@@ -38,9 +38,9 @@ cat(sprintf("Generated %d image(s): %dx%d in %.1fs\n",
 show_image(imgs[[1]], "sdR_gen_512.png")
 rm(ctx); gc()
 
-# --- 2. 1024x1024, vram_gb=8 -> auto tiled ---
-cat("\n--- 2. 1024x1024, vram_gb=8 -> auto tiled ---\n")
-ctx <- sd_ctx(model_path, n_threads = 4L, model_type = "sd1", vram_gb = 8)
+# --- 2. 1024x1024, forced tiled VAE ---
+cat("\n--- 2. 1024x1024 -> tiled VAE ---\n")
+ctx <- sd_ctx(model_path, n_threads = 4L, model_type = "sd1")
 t0 <- proc.time()
 imgs_tiled <- sd_generate(
   ctx,
@@ -58,10 +58,10 @@ cat(sprintf("Generated %d image(s): %dx%d in %.1fs\n",
 show_image(imgs_tiled[[1]], "sdR_gen_tiled_1k.png")
 rm(ctx); gc()
 
-# --- 3. 2048x1024, vram_gb=8 -> auto highres fix ---
-cat("\n--- 3. 2048x1024, vram_gb=8 -> auto highres fix ---\n")
+# --- 3. 2048x1024 -> auto highres fix ---
+cat("\n--- 3. 2048x1024 -> auto highres fix ---\n")
 ctx <- sd_ctx(model_path, n_threads = 4L, model_type = "sd1",
-              vram_gb = 8, vae_decode_only = FALSE)
+              vae_decode_only = FALSE)
 t0 <- proc.time()
 imgs_hr <- sd_generate(
   ctx,
@@ -80,9 +80,9 @@ show_image(imgs_hr[[1]], "sdR_gen_highres_panorama.png")
 rm(ctx); gc()
 
 # --- 4. img2img 512x512 (direct) ---
-cat("\n--- 4. img2img 512x512, vram_gb=16 -> direct ---\n")
+cat("\n--- 4. img2img 512x512 -> direct ---\n")
 ctx <- sd_ctx(model_path, n_threads = 4L, model_type = "sd1",
-              vram_gb = 16, vae_decode_only = FALSE)
+              vae_decode_only = FALSE)
 t0 <- proc.time()
 refined <- sd_generate(
   ctx,
@@ -99,8 +99,8 @@ cat(sprintf("Generated %d image(s): %dx%d in %.1fs\n",
             length(refined), refined[[1]]$width, refined[[1]]$height, elapsed))
 show_image(refined[[1]], "sdR_gen_img2img.png")
 
-# --- 5. 1024x1024, vram_gb=16 -> direct (no tiling) ---
-cat("\n--- 5. 1024x1024, vram_gb=16 -> direct (no tiling) ---\n")
+# --- 5. 1024x1024 -> direct (auto-routed) ---
+cat("\n--- 5. 1024x1024 -> direct ---\n")
 t0 <- proc.time()
 imgs_1k <- sd_generate(
   ctx,
@@ -115,6 +115,43 @@ elapsed <- (proc.time() - t0)[["elapsed"]]
 cat(sprintf("Generated %d image(s): %dx%d in %.1fs\n",
             length(imgs_1k), imgs_1k[[1]]$width, imgs_1k[[1]]$height, elapsed))
 show_image(imgs_1k[[1]], "sdR_gen_direct_1k.png")
+
+# --- 6. Multi-GPU (if available) ---
+n_gpu <- tryCatch(ggmlR::ggml_vulkan_device_count(), error = function(e) 1L)
+cat(sprintf("\n--- 6. Multi-GPU test: %d Vulkan device(s) detected ---\n", n_gpu))
+
+if (n_gpu > 1L) {
+  multi_prompts <- c(
+    "a cat in a garden, watercolor",
+    "a dog on a beach, oil painting",
+    "a bird in the sky, digital art",
+    "a fish underwater, photorealistic"
+  )
+  t0 <- proc.time()
+  imgs_multi <- sd_generate_multi_gpu(
+    model_path,
+    prompts = multi_prompts,
+    negative_prompt = "blurry, bad quality",
+    width = 512L, height = 512L,
+    model_type = "sd1",
+    sample_steps = 20L, cfg_scale = 7.0,
+    sample_method = SAMPLE_METHOD$EULER,
+    scheduler = SCHEDULER$DISCRETE
+  )
+  elapsed <- (proc.time() - t0)[["elapsed"]]
+  cat(sprintf("Multi-GPU: generated %d image(s) across %d GPUs in %.1fs\n",
+              length(imgs_multi), n_gpu, elapsed))
+  for (i in seq_along(imgs_multi)) {
+    if (!inherits(imgs_multi[[i]], "error")) {
+      show_image(imgs_multi[[i]], sprintf("sdR_gen_multi_gpu_%d.png", i))
+    } else {
+      cat(sprintf("  Image %d failed: %s\n", i, conditionMessage(imgs_multi[[i]])))
+    }
+  }
+  rm(imgs_multi)
+} else {
+  cat("Skipping: only 1 GPU detected, multi-GPU test requires 2+\n")
+}
 
 # Cleanup
 rm(ctx, imgs, imgs_tiled, imgs_hr, refined, imgs_1k)

@@ -764,7 +764,7 @@ namespace LLM {
                     int window_size,
                     std::set<int> fullatt_block_indexes = {7, 15, 23, 31},
                     float eps                           = 1e-6f)
-            : num_layers(num_layers), fullatt_block_indexes(std::move(fullatt_block_indexes)), spatial_merge_size(spatial_merge_size) {
+            : num_layers(num_layers), spatial_merge_size(spatial_merge_size), fullatt_block_indexes(std::move(fullatt_block_indexes)) {
             blocks["patch_embed"] = std::shared_ptr<GGMLBlock>(new VisionPatchEmbed(llama_cpp_style,
                                                                                     patch_size,
                                                                                     temporal_patch_size,
@@ -827,7 +827,7 @@ namespace LLM {
 
     public:
         Attention(const LLMParams& params)
-            : arch(params.arch), num_heads(params.num_heads), num_kv_heads(params.num_kv_heads), head_dim(params.head_dim), qk_norm(params.qk_norm) {
+            : arch(params.arch), head_dim(params.head_dim), num_heads(params.num_heads), num_kv_heads(params.num_kv_heads), qk_norm(params.qk_norm) {
             blocks["q_proj"] = std::make_shared<Linear>(params.hidden_size, num_heads * head_dim, params.qkv_bias);
             blocks["k_proj"] = std::make_shared<Linear>(params.hidden_size, num_kv_heads * head_dim, params.qkv_bias);
             blocks["v_proj"] = std::make_shared<Linear>(params.hidden_size, num_kv_heads * head_dim, params.qkv_bias);

@@ -7,7 +7,7 @@
 .select_strategy(
   width,
   height,
-  vram_gb,
+  ctx,
   model_type,
   is_img2img,
   vae_decode_only = TRUE
@@ -18,7 +18,7 @@
 
 \item{height}{Target height}
 
-\item{vram_gb}{Available VRAM (NULL = direct)}
+\item{ctx}{SD context with VRAM attributes}
 
 \item{model_type}{Model type string}
 

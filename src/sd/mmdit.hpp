@@ -54,9 +54,9 @@ public:
                bool bias            = true,
                bool flatten         = true,
                bool dynamic_img_pad = true)
-        : patch_size(patch_size),
-          flatten(flatten),
-          dynamic_img_pad(dynamic_img_pad) {
+        : flatten(flatten),
+          dynamic_img_pad(dynamic_img_pad),
+          patch_size(patch_size) {
         // img_size is always None
         // patch_size is always 2
         // in_chans is always 16

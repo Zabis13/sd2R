@@ -1,0 +1,70 @@
+#!/bin/sh
+
+# Configure script for sdR (Windows/Rtools)
+
+# ---- Download vocabulary files from GitHub Releases ----
+
+VOCAB_BASE_URL="https://github.com/Zabis13/sdR/releases/download/assets"
+VOCAB_DIR="src/sd"
+VOCAB_FILES="vocab.hpp vocab_mistral.hpp vocab_qwen.hpp vocab_umt5.hpp"
+DOWNLOAD_FAILED=0
+
+# Find a download tool
+DOWNLOADER=""
+if command -v curl >/dev/null 2>&1; then
+  DOWNLOADER="curl"
+elif command -v wget >/dev/null 2>&1; then
+  DOWNLOADER="wget"
+fi
+
+for f in $VOCAB_FILES; do
+  if [ -f "${VOCAB_DIR}/${f}" ] && [ -s "${VOCAB_DIR}/${f}" ]; then
+    echo "* ${f}: already present, skipping download"
+  else
+    if [ -z "$DOWNLOADER" ]; then
+      DOWNLOAD_FAILED=1
+      break
+    fi
+    echo "* Downloading ${f}..."
+    if [ "$DOWNLOADER" = "curl" ]; then
+      curl -fSL --retry 3 -o "${VOCAB_DIR}/${f}" "${VOCAB_BASE_URL}/${f}" 2>/dev/null
+    else
+      wget -q --tries=3 -O "${VOCAB_DIR}/${f}" "${VOCAB_BASE_URL}/${f}" 2>/dev/null
+    fi
+    if [ ! -f "${VOCAB_DIR}/${f}" ] || [ ! -s "${VOCAB_DIR}/${f}" ]; then
+      DOWNLOAD_FAILED=1
+      rm -f "${VOCAB_DIR}/${f}"
+    else
+      echo "* ${f}: downloaded successfully"
+    fi
+  fi
+done
+
+if [ "$DOWNLOAD_FAILED" -eq 1 ]; then
+  echo ""
+  echo "ERROR: Failed to download required vocabulary files."
+  echo ""
+  echo "These files are required for compilation:"
+  echo "  vocab.hpp, vocab_mistral.hpp, vocab_qwen.hpp, vocab_umt5.hpp"
+  echo ""
+  echo "You can download them manually from:"
+  echo "  ${VOCAB_BASE_URL}"
+  echo ""
+  echo "Place the files into the src/sd/ directory of the package source,"
+  echo "then run install.packages() again."
+  exit 1
+fi
+
+# ---- Vulkan auto-detection ----
+
+if [ -n "$VULKAN_SDK" ] && [ -d "$VULKAN_SDK/Lib" ]; then
+    echo "Vulkan: detected at $VULKAN_SDK"
+    # Append Vulkan flags to existing Makevars.win
+    sed -i "s|^\(PKG_CPPFLAGS = .*\)|\1 -DSD_USE_VULKAN|" src/Makevars.win
+    sed -i "s|^\(PKG_LIBS = .*\)|\1 -L\"${VULKAN_SDK}/Lib\" -lvulkan-1|" src/Makevars.win
+    echo "* Vulkan flags appended to src/Makevars.win"
+else
+    echo "Vulkan: not found (building without GPU support)"
+fi
+
+echo "Configuration complete."

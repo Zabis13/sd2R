@@ -283,10 +283,10 @@ public:
                    int64_t context_dim,
                    int64_t n_head,
                    int64_t d_head)
-        : n_head(n_head),
-          d_head(d_head),
-          query_dim(query_dim),
-          context_dim(context_dim) {
+        : query_dim(query_dim),
+          context_dim(context_dim),
+          n_head(n_head),
+          d_head(d_head) {
         int64_t inner_dim = d_head * n_head;
 
         blocks["to_q"] = std::shared_ptr<GGMLBlock>(new Linear(query_dim, inner_dim, false));

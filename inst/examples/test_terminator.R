@@ -3,7 +3,7 @@ library(sdR)
 model_path <- "/mnt/Data2/DS_projects/sd_models/v1-5-pruned-emaonly.safetensors"
 
 ctx <- sd_ctx(model_path, n_threads = 4L, model_type = "sd1",
-              vram_gb = 8, vae_decode_only = FALSE)
+              vae_decode_only = FALSE)
 
 t0 <- proc.time()
 imgs <- sd_generate(

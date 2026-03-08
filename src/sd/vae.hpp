@@ -661,7 +661,7 @@ struct AutoEncoderKL : public VAE {
                   bool decode_only       = false,
                   bool use_video_decoder = false,
                   SDVersion version      = VERSION_SD1)
-        : decode_only(decode_only), VAE(backend, offload_params_to_cpu) {
+        : VAE(backend, offload_params_to_cpu), decode_only(decode_only) {
         bool use_linear_projection = false;
         for (const auto& [name, tensor_storage] : tensor_storage_map) {
             if (!starts_with(name, prefix)) {

@@ -75,14 +75,14 @@ not reuse the context. Default is FALSE.}
 \code{\link{sd_generate}} to determine native resolution and tile sizes.
 Default \code{"sd1"}.}
 
-\item{vram_gb}{Available VRAM in GB. Used by \code{\link{sd_generate}} to
-auto-select generation strategy (direct vs tiled sampling vs highres fix).
-\code{NULL} = no auto-routing, user must choose function manually.
-Default \code{NULL}.}
+\item{vram_gb}{Override available VRAM in GB. When set, disables auto-detection
+and uses this value for strategy routing. Default \code{NULL} (auto-detect
+from Vulkan device).}
 }
 \value{
 An external pointer to the SD context (class "sd_ctx") with
-  attributes \code{model_type}, \code{vae_decode_only}, and \code{vram_gb}.
+  attributes \code{model_type}, \code{vae_decode_only}, \code{vram_gb},
+  \code{vram_total_gb}, and \code{vram_device}.
 }
 \description{
 Loads a model and creates a context for image generation.

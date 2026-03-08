@@ -25,7 +25,7 @@ struct LoraModel : public GGMLRunner {
               const std::string& file_path = "",
               std::string prefix           = "",
               SDVersion version            = VERSION_COUNT)
-        : lora_id(lora_id), file_path(file_path), GGMLRunner(backend, false) {
+        : GGMLRunner(backend, false), lora_id(lora_id), file_path(file_path) {
         prefix = "lora." + prefix;
         if (!model_loader.init_from_file_and_convert_name(file_path, prefix, version)) {
             load_failed = true;

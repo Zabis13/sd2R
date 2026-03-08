@@ -30,12 +30,12 @@
 #'   \code{"sdxl"}, \code{"flux"}, or \code{"sd3"}. Used by
 #'   \code{\link{sd_generate}} to determine native resolution and tile sizes.
 #'   Default \code{"sd1"}.
-#' @param vram_gb Available VRAM in GB. Used by \code{\link{sd_generate}} to
-#'   auto-select generation strategy (direct vs tiled sampling vs highres fix).
-#'   \code{NULL} = no auto-routing, user must choose function manually.
-#'   Default \code{NULL}.
+#' @param vram_gb Override available VRAM in GB. When set, disables auto-detection
+#'   and uses this value for strategy routing. Default \code{NULL} (auto-detect
+#'   from Vulkan device).
 #' @return An external pointer to the SD context (class "sd_ctx") with
-#'   attributes \code{model_type}, \code{vae_decode_only}, and \code{vram_gb}.
+#'   attributes \code{model_type}, \code{vae_decode_only}, \code{vram_gb},
+#'   \code{vram_total_gb}, and \code{vram_device}.
 #' @export
 #' @examples
 #' \dontrun{
@@ -108,6 +108,15 @@ sd_ctx <- function(model_path,
   attr(ctx, "model_type") <- model_type
   attr(ctx, "vae_decode_only") <- vae_decode_only
   attr(ctx, "vram_gb") <- vram_gb
+
+  # Cache total VRAM for auto-routing (one-time Vulkan query)
+  device <- as.integer(Sys.getenv("SD_VK_DEVICE", "0"))
+  attr(ctx, "vram_device") <- device
+  attr(ctx, "vram_total_gb") <- tryCatch({
+    mem <- ggmlR::ggml_vulkan_device_memory(device)
+    mem$total / 1e9
+  }, error = function(e) NULL)
+
   ctx
 }
 
@@ -149,12 +158,12 @@ sd_ctx <- function(model_path,
 #' @export
 #' @examples
 #' \dontrun{
-#' # Simple — auto-routes based on vram_gb
+#' # Simple — auto-routes based on detected VRAM
 #' ctx <- sd_ctx("model.safetensors", model_type = "sd1",
-#'               vram_gb = 16, vae_decode_only = FALSE)
+#'               vae_decode_only = FALSE)
 #' imgs <- sd_generate(ctx, "a cat", width = 2048, height = 2048)
 #'
-#' # With 4 GB VRAM — will auto-select tiled sampling
+#' # Manual override — force 4 GB VRAM limit
 #' ctx4 <- sd_ctx("model.safetensors", model_type = "sd1",
 #'                vram_gb = 4, vae_decode_only = FALSE)
 #' imgs <- sd_generate(ctx4, "a cat", width = 2048, height = 2048)
@@ -180,13 +189,12 @@ sd_generate <- function(ctx,
                         vae_tile_overlap = 0.25) {
   width <- as.integer(width)
   height <- as.integer(height)
-  vram_gb <- attr(ctx, "vram_gb")
   model_type <- attr(ctx, "model_type") %||% "sd1"
   is_img2img <- !is.null(init_image)
 
   # Determine strategy
   vae_decode_only <- attr(ctx, "vae_decode_only") %||% TRUE
-  strategy <- .select_strategy(width, height, vram_gb, model_type, is_img2img,
+  strategy <- .select_strategy(width, height, ctx, model_type, is_img2img,
                                vae_decode_only)
 
   if (is_img2img) {
@@ -265,15 +273,31 @@ sd_generate <- function(ctx,
 #'
 #' @param width Target width
 #' @param height Target height
-#' @param vram_gb Available VRAM (NULL = direct)
+#' @param ctx SD context with VRAM attributes
 #' @param model_type Model type string
 #' @param is_img2img Whether this is an img2img call
 #' @param vae_decode_only Whether context has VAE encoder (FALSE = has encoder)
 #' @return One of "direct", "tiled", "highres_fix"
 #' @keywords internal
-.select_strategy <- function(width, height, vram_gb, model_type, is_img2img,
+.select_strategy <- function(width, height, ctx, model_type, is_img2img,
                              vae_decode_only = TRUE) {
-  if (is.null(vram_gb)) return("direct")
+  # Manual vram_gb takes priority
+  vram_gb <- attr(ctx, "vram_gb")
+
+  if (is.null(vram_gb)) {
+    # Auto-detect from Vulkan device
+    device <- attr(ctx, "vram_device") %||% 0L
+    vram_gb <- tryCatch({
+      free <- ggmlR::ggml_vulkan_device_memory(device)$free / 1e9
+      total <- attr(ctx, "vram_total_gb") %||% free
+      # Protect against UMA/shared memory: driver reserves ~10%
+      min(free, total * 0.9)
+    }, error = function(e) {
+      warning("VRAM autodetect failed, assuming unlimited: ",
+              conditionMessage(e))
+      Inf
+    })
+  }
 
   native_px <- .native_tile_size(model_type)
   pixels <- as.numeric(width) * as.numeric(height)
@@ -970,6 +994,7 @@ sd_txt2img_highres <- function(ctx,
 #' @param tile_size Tile size in pixels
 #' @param overlap_px Overlap in pixels
 #' @return Data frame with columns x, y (0-based top-left of each patch)
+#' @importFrom utils tail
 #' @keywords internal
 .compute_patch_grid <- function(width, height, tile_size, overlap_px) {
   stride <- tile_size - overlap_px
