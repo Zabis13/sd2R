@@ -54,8 +54,17 @@ Distributes prompts across available Vulkan GPUs, running one process per
 GPU via \code{callr}. Each process creates its own \code{\link{sd_ctx}} and
 calls \code{\link{sd_generate}}. Requires the \code{callr} package.
 }
+\note{
+Release any existing SD context (\code{rm(ctx); gc()}) before calling
+  this function. Holding a Vulkan context in the main process while
+  subprocesses try to use the same GPU can produce corrupted (grey) images.
+}
 \examples{
 \dontrun{
+ctx <- sd_ctx("model.safetensors")
+imgs <- sd_generate(ctx, "a cat")
+rm(ctx); gc()  # free GPU before multi-GPU call
+
 imgs <- sd_generate_multi_gpu(
   "model.safetensors",
   prompts = c("a cat", "a dog", "a bird", "a fish"),

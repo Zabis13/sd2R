@@ -2,7 +2,7 @@
 #define __T5_HPP__
 
 #ifdef GGML_R_PACKAGE
-#include <R_ext/Print.h>
+
 #endif
 #include <cfloat>
 #include <limits>
@@ -981,13 +981,13 @@ struct T5Embedder {
             std::vector<float>& masks   = std::get<2>(tokens_and_weights);
             for (auto token : tokens) {
 #ifdef GGML_R_PACKAGE
-                Rprintf("%d ", token);
+                printf("%d ", token);
 #else
                 printf("%d ", token);
 #endif
             }
 #ifdef GGML_R_PACKAGE
-            Rprintf("\n");
+            printf("\n");
 #else
             printf("\n");
 #endif

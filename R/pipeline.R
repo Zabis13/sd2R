@@ -1195,9 +1195,16 @@ sd_convert <- function(input_path, output_path, output_type = SD_TYPE$F16,
 #' @param progress Print progress messages (default TRUE)
 #' @param ... Additional arguments passed to \code{\link{sd_generate}}
 #' @return List of SD images, one per prompt, in original order.
+#' @note Release any existing SD context (\code{rm(ctx); gc()}) before calling
+#'   this function. Holding a Vulkan context in the main process while
+#'   subprocesses try to use the same GPU can produce corrupted (grey) images.
 #' @export
 #' @examples
 #' \dontrun{
+#' ctx <- sd_ctx("model.safetensors")
+#' imgs <- sd_generate(ctx, "a cat")
+#' rm(ctx); gc()  # free GPU before multi-GPU call
+#'
 #' imgs <- sd_generate_multi_gpu(
 #'   "model.safetensors",
 #'   prompts = c("a cat", "a dog", "a bird", "a fish"),
@@ -1219,6 +1226,12 @@ sd_generate_multi_gpu <- function(model_path,
   if (!requireNamespace("callr", quietly = TRUE)) {
     stop("Package 'callr' is required for multi-GPU generation. ",
          "Install it with: install.packages('callr')", call. = FALSE)
+  }
+
+  # Warn about potential Vulkan conflicts with existing contexts
+  if (progress) {
+    message("Note: ensure all sd_ctx() contexts are released (rm(ctx); gc()) ",
+            "before calling sd_generate_multi_gpu() to avoid GPU conflicts.")
   }
 
   # Auto-detect devices

@@ -1,8 +1,11 @@
 #!/bin/sh
 # Clean compiled objects and shared library
 
-rm -f src/*.o src/*.so src/*.dll
+rm -f src/*.o src/*.so src/*.dll src/*.dylib
 rm -f src/sd/*.o
 rm -f src/sd/thirdparty/*.o
+
+# Remove generated files created by configure
 rm -f src/Makevars
+rm -f src/Makevars.win
 

@@ -2,7 +2,7 @@
 #define __LLM_HPP__
 
 #ifdef GGML_R_PACKAGE
-#include <R_ext/Print.h>
+
 #endif
 #include <algorithm>
 #include <fstream>
@@ -1547,13 +1547,13 @@ namespace LLM {
                 std::vector<float>& weights = std::get<1>(tokens_and_weights);
                 for (auto token : tokens) {
 #ifdef GGML_R_PACKAGE
-                    Rprintf("%d ", token);
+                    printf("%d ", token);
 #else
                     printf("%d ", token);
 #endif
                 }
 #ifdef GGML_R_PACKAGE
-                Rprintf("\n");
+                printf("\n");
 #else
                 printf("\n");
 #endif
@@ -1595,13 +1595,13 @@ namespace LLM {
                 std::vector<float>& weights = std::get<1>(tokens_and_weights);
                 for (auto token : tokens) {
 #ifdef GGML_R_PACKAGE
-                    Rprintf("%d ", token);
+                    printf("%d ", token);
 #else
                     printf("%d ", token);
 #endif
                 }
 #ifdef GGML_R_PACKAGE
-                Rprintf("\n");
+                printf("\n");
 #else
                 printf("\n");
 #endif
@@ -1626,13 +1626,13 @@ namespace LLM {
                 std::vector<float>& weights = std::get<1>(tokens_and_weights);
                 for (auto token : tokens) {
 #ifdef GGML_R_PACKAGE
-                    Rprintf("%d ", token);
+                    printf("%d ", token);
 #else
                     printf("%d ", token);
 #endif
                 }
 #ifdef GGML_R_PACKAGE
-                Rprintf("\n");
+                printf("\n");
 #else
                 printf("\n");
 #endif
@@ -1657,13 +1657,13 @@ namespace LLM {
                 std::vector<float>& weights = std::get<1>(tokens_and_weights);
                 for (auto token : tokens) {
 #ifdef GGML_R_PACKAGE
-                    Rprintf("%d ", token);
+                    printf("%d ", token);
 #else
                     printf("%d ", token);
 #endif
                 }
 #ifdef GGML_R_PACKAGE
-                Rprintf("\n");
+                printf("\n");
 #else
                 printf("\n");
 #endif

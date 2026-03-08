@@ -40,6 +40,7 @@ SystemRequirements: GNU make, curl or wget (for downloading vocabulary files dur
 License: MIT + file LICENSE
 URL: https://github.com/Zabis13/sdR
 BugReports: https://github.com/Zabis13/sdR/issues
+Depends: R (>= 4.1.0)
 Encoding: UTF-8
 Imports:
     Rcpp (>= 1.0.0),

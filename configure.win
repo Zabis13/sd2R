@@ -1,6 +1,11 @@
 #!/bin/sh
 
 # Configure script for sdR (Windows/Rtools)
+# 1. Download vocabulary header files
+# 2. Resolve ggmlR paths
+# 3. Resolve OpenMP flags from R's Makeconf
+# 4. Auto-detect Vulkan support
+# 5. Generate src/Makevars.win from src/Makevars.win.in
 
 # ---- Download vocabulary files from GitHub Releases ----
 
@@ -55,16 +60,72 @@ if [ "$DOWNLOAD_FAILED" -eq 1 ]; then
   exit 1
 fi
 
-# ---- Vulkan auto-detection ----
+# ---- Find R and Rscript ----
 
-if [ -n "$VULKAN_SDK" ] && [ -d "$VULKAN_SDK/Lib" ]; then
-    echo "Vulkan: detected at $VULKAN_SDK"
-    # Append Vulkan flags to existing Makevars.win
-    sed -i "s|^\(PKG_CPPFLAGS = .*\)|\1 -DSD_USE_VULKAN|" src/Makevars.win
-    sed -i "s|^\(PKG_LIBS = .*\)|\1 -L\"${VULKAN_SDK}/Lib\" -lvulkan-1|" src/Makevars.win
-    echo "* Vulkan flags appended to src/Makevars.win"
+: ${R_HOME=$(R RHOME 2>/dev/null)}
+if [ -n "$R_HOME" ]; then
+  RSCRIPT="${R_HOME}/bin/Rscript"
 else
-    echo "Vulkan: not found (building without GPU support)"
+  RSCRIPT="Rscript"
 fi
 
+# ---- Resolve ggmlR installed paths ----
+
+GGMLR_LIB=$($RSCRIPT -e "cat(system.file('lib', package='ggmlR'))" 2>/dev/null)
+GGMLR_INCLUDE=$($RSCRIPT -e "cat(system.file('include', package='ggmlR'))" 2>/dev/null)
+
+if [ -z "$GGMLR_LIB" ] || [ -z "$GGMLR_INCLUDE" ]; then
+  echo "ERROR: ggmlR package not found. Install it first:"
+  echo "  remotes::install_github(\"Zabis13/ggmlR\")"
+  exit 1
+fi
+
+echo "* ggmlR lib: ${GGMLR_LIB}"
+echo "* ggmlR include: ${GGMLR_INCLUDE}"
+
+# ---- Resolve OpenMP flags from R's Makeconf ----
+#
+# CRAN R CMD check enforces strict pairing of SHLIB_OPENMP_*FLAGS macros.
+# For mixed C/C++ packages this creates conflicts. Solution: resolve flags
+# at configure time (same approach as RcppArmadillo and ggmlR).
+
+MAKECONF="${R_HOME}/etc/Makeconf"
+OPENMP_CXXFLAGS=""
+
+if [ -f "$MAKECONF" ]; then
+  OPENMP_CXXFLAGS=$(grep '^SHLIB_OPENMP_CXXFLAGS' "$MAKECONF" | sed 's/[^=]*= *//')
+fi
+
+if [ -n "$OPENMP_CXXFLAGS" ]; then
+  echo "* OpenMP: enabled (C++: ${OPENMP_CXXFLAGS})"
+else
+  echo "* OpenMP: not available"
+fi
+
+# ---- Auto-detect Vulkan support ----
+
+VULKAN_CPPFLAGS=""
+VULKAN_LIBS=""
+
+if [ -n "$VULKAN_SDK" ] && [ -d "$VULKAN_SDK/Lib" ]; then
+  VULKAN_CPPFLAGS="-DSD_USE_VULKAN -I\"${VULKAN_SDK}/Include\""
+  VULKAN_LIBS="-L\"${VULKAN_SDK}/Lib\" -lvulkan-1"
+  echo "* Vulkan: enabled (SDK: ${VULKAN_SDK})"
+else
+  echo "* Vulkan: not found (building without GPU support)"
+fi
+
+# ---- Generate src/Makevars.win from src/Makevars.win.in ----
+
+echo "Generating src/Makevars.win..."
+
+sed \
+  -e "s|@GGMLR_LIB@|${GGMLR_LIB}|g" \
+  -e "s|@GGMLR_INCLUDE@|${GGMLR_INCLUDE}|g" \
+  -e "s|@VULKAN_CPPFLAGS@|${VULKAN_CPPFLAGS}|g" \
+  -e "s|@VULKAN_LIBS@|${VULKAN_LIBS}|g" \
+  -e "s|@OPENMP_CXXFLAGS@|${OPENMP_CXXFLAGS}|g" \
+  src/Makevars.win.in > src/Makevars.win
+
+echo "* Wrote src/Makevars.win"
 echo "Configuration complete."

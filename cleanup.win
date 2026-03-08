@@ -1,0 +1,12 @@
+@echo off
+REM Cleanup script for sdR package (Windows)
+REM Removes compiled objects, shared libraries, and generated files
+
+REM Remove compiled objects and libraries
+del /Q src\*.o src\*.so src\*.dll src\*.dylib 2>NUL
+del /Q src\sd\*.o 2>NUL
+del /Q src\sd\thirdparty\*.o 2>NUL
+
+REM Remove generated files created by configure
+del /Q src\Makevars 2>NUL
+del /Q src\Makevars.win 2>NUL
