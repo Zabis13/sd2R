@@ -88,4 +88,31 @@ sed -i \
   's/^static bool sd_version_is_inpaint_or_unet_edit/[[maybe_unused]] static bool sd_version_is_inpaint_or_unet_edit/' \
   "$SD_DIR/model.h" && echo "  patched: model.h (unused function)"
 
+# --- 4. Defensive mask creation in generate_image (img2img) ---
+# stable-diffusion.cpp creates mask tensor at aligned width x height, but
+# caller may provide mask_image with different (or zero) dimensions.
+# Patch: create all-white mask if missing or size mismatch.
+SDCPP="$SD_DIR/stable-diffusion.cpp"
+if ! grep -q 'PATCH(sdR): create all-white mask' "$SDCPP" 2>/dev/null; then
+  sed -i '/sd_image_to_ggml_tensor(sd_img_gen_params->mask_image, mask_img);/{
+    i\        // PATCH(sdR): create all-white mask if missing or size mismatch\
+        // The mask tensor uses the final aligned width x height, which may\
+        // differ from the caller-provided mask_image dimensions.\
+        // 255 = white = keep everything (correct default for img2img without inpainting).\
+        sd_image_t mask_image_used = sd_img_gen_params->mask_image;\
+        std::vector<uint8_t> default_mask;\
+        if (mask_image_used.data == nullptr ||\
+            (int)mask_image_used.width  != width ||\
+            (int)mask_image_used.height != height) {\
+            default_mask.assign((size_t)width * height, 255);\
+            mask_image_used.width   = width;\
+            mask_image_used.height  = height;\
+            mask_image_used.channel = 1;\
+            mask_image_used.data    = default_mask.data();\
+        }\
+        sd_image_to_ggml_tensor(mask_image_used, mask_img);
+    s/sd_image_to_ggml_tensor(sd_img_gen_params->mask_image, mask_img);/\/\/ (replaced by PATCH above)/
+  }' "$SDCPP" && echo "  patched: stable-diffusion.cpp (defensive mask creation)"
+fi
+
 echo "* Done."

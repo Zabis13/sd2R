@@ -3795,8 +3795,47 @@ sd_image_t* generate_image(sd_ctx_t* sd_ctx, const sd_img_gen_params_t* sd_img_g
         ggml_tensor* init_img = ggml_new_tensor_4d(work_ctx, GGML_TYPE_F32, width, height, 3, 1);
         ggml_tensor* mask_img = ggml_new_tensor_4d(work_ctx, GGML_TYPE_F32, width, height, 1, 1);
 
-        sd_image_to_ggml_tensor(sd_img_gen_params->mask_image, mask_img);
-        sd_image_to_ggml_tensor(sd_img_gen_params->init_image, init_img);
+        // PATCH(sdR): create all-white mask if missing or size mismatch
+        // The mask tensor uses the final aligned width x height, which may
+        // differ from the caller-provided mask_image dimensions.
+        // 255 = white = keep everything (correct default for img2img without inpainting).
+        sd_image_t mask_image_used = sd_img_gen_params->mask_image;
+        std::vector<uint8_t> default_mask;
+        if (mask_image_used.data == nullptr ||
+            (int)mask_image_used.width  != width ||
+            (int)mask_image_used.height != height) {
+            default_mask.assign((size_t)width * height, 255);
+            mask_image_used.width   = width;
+            mask_image_used.height  = height;
+            mask_image_used.channel = 1;
+            mask_image_used.data    = default_mask.data();
+        }
+        sd_image_to_ggml_tensor(mask_image_used, mask_img);
+
+        // PATCH(sdR): pad init_image with edge-repeat if size mismatches aligned width x height
+        sd_image_t init_image_used = sd_img_gen_params->init_image;
+        std::vector<uint8_t> padded_init;
+        if ((int)init_image_used.width != width || (int)init_image_used.height != height) {
+            int src_w = init_image_used.width;
+            int src_h = init_image_used.height;
+            int ch    = init_image_used.channel;
+            padded_init.resize((size_t)width * height * ch);
+            for (int y = 0; y < height; y++) {
+                int sy = (y < src_h) ? y : src_h - 1;
+                for (int x = 0; x < width; x++) {
+                    int sx = (x < src_w) ? x : src_w - 1;
+                    for (int c = 0; c < ch; c++) {
+                        padded_init[(y * width + x) * ch + c] =
+                            init_image_used.data[(sy * src_w + sx) * ch + c];
+                    }
+                }
+            }
+            init_image_used.width  = width;
+            init_image_used.height = height;
+            init_image_used.data   = padded_init.data();
+            LOG_INFO("init_image padded from %dx%d to %dx%d (edge-repeat)", src_w, src_h, width, height);
+        }
+        sd_image_to_ggml_tensor(init_image_used, init_img);
 
         if (sd_version_is_inpaint(sd_ctx->sd->version)) {
             int64_t mask_channels = 1;

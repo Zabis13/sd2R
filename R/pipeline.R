@@ -45,7 +45,7 @@
 #' imgs <- sd_txt2img(ctx, "a cat sitting on a chair")
 #' sd_save_image(imgs[[1]], "cat.png")
 #' }
-sd_ctx <- function(model_path,
+sd_ctx <- function(model_path = NULL,
                    vae_path = NULL,
                    taesd_path = NULL,
                    clip_l_path = NULL,
@@ -70,13 +70,16 @@ sd_ctx <- function(model_path,
 
   sd_set_verbose(verbose)
 
-  if (!file.exists(model_path)) {
+  if (!is.null(model_path) && !file.exists(model_path)) {
     stop("Model file not found: ", model_path, call. = FALSE)
+  }
+  if (is.null(model_path) && is.null(diffusion_model_path)) {
+    stop("Either model_path or diffusion_model_path must be provided", call. = FALSE)
   }
   model_type <- match.arg(model_type, c("sd1", "sd2", "sdxl", "flux", "sd3"))
 
   params <- list(
-    model_path = normalizePath(model_path),
+    model_path = if (!is.null(model_path)) normalizePath(model_path) else "",
     n_threads = as.integer(n_threads),
     wtype = as.integer(wtype),
     vae_decode_only = vae_decode_only,
@@ -192,9 +195,19 @@ sd_generate <- function(ctx,
                         vae_mode = "auto",
                         vae_tile_size = 64L,
                         vae_tile_overlap = 0.25) {
+  # img2img: default to init_image dimensions when width/height not specified
+  if (!is.null(init_image)) {
+    if (missing(width))  width  <- init_image$width
+    if (missing(height)) height <- init_image$height
+  }
   width <- as.integer(width)
   height <- as.integer(height)
   model_type <- attr(ctx, "model_type") %||% "sd1"
+
+  # Flux uses guidance-distilled models; cfg_scale should default to 1.0
+  if (model_type == "flux" && cfg_scale == 7.0) {
+    cfg_scale <- 1.0
+  }
   is_img2img <- !is.null(init_image)
 
   # Determine strategy

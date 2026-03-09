@@ -260,24 +260,10 @@ Rcpp::List sd_generate_image(SEXP ctx_sexp, Rcpp::List params) {
     }
 
     // Init image (for img2img)
-    bool owns_mask = false;
+    // Note: mask_image is left empty (sd_image_t{}) — stable-diffusion.cpp
+    // creates an all-white mask at the correct aligned size if none is provided.
     if (params.containsElementNamed("init_image") && !Rf_isNull(params["init_image"])) {
         p.init_image = r_to_sd_image(Rcpp::as<Rcpp::List>(params["init_image"]));
-
-        // FIX: stable-diffusion.cpp:3782 unconditionally calls
-        // sd_image_to_ggml_tensor(mask_image, mask_img) for all img2img paths.
-        // Without a mask, width/height are 0 and data is NULL, causing
-        // GGML_ASSERT(image.width == tensor->ne[0]) crash in ggml_extend.hpp:454.
-        // Solution: provide an all-white mask (255 = keep everything, no masking).
-        if (p.mask_image.data == nullptr) {
-            p.mask_image.width   = p.init_image.width;
-            p.mask_image.height  = p.init_image.height;
-            p.mask_image.channel = 1;
-            size_t mask_size     = (size_t)p.mask_image.width * p.mask_image.height * p.mask_image.channel;
-            p.mask_image.data    = (uint8_t*)malloc(mask_size);
-            memset(p.mask_image.data, 255, mask_size);
-            owns_mask = true;
-        }
     }
 
     // Control image
@@ -286,12 +272,6 @@ Rcpp::List sd_generate_image(SEXP ctx_sexp, Rcpp::List params) {
     }
 
     sd_image_t* results = generate_image(xptr.get(), &p);
-
-    // Free mask if we allocated it
-    if (owns_mask && p.mask_image.data) {
-        free(p.mask_image.data);
-        p.mask_image.data = nullptr;
-    }
 
     if (!results) {
         Rcpp::stop("Image generation failed");

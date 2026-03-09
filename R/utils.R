@@ -18,6 +18,17 @@ sd_system_info <- function() {
   info
 }
 
+#' Get number of Vulkan GPU devices
+#'
+#' Returns the number of Vulkan-capable GPU devices available on the system.
+#' Useful for deciding whether to use \code{\link{sd_generate_multi_gpu}}.
+#'
+#' @return Integer, number of Vulkan devices (0 if Vulkan is not available)
+#' @export
+sd_vulkan_device_count <- function() {
+  tryCatch(ggmlR::ggml_vulkan_device_count(), error = function(e) 0L)
+}
+
 #' @export
 print.sd_system_info <- function(x, ...) {
   cat("sdR System Information\n")

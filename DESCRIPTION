@@ -1,7 +1,7 @@
 Package: sdR
 Type: Package
 Title: Stable Diffusion Image Generation
-Version: 0.1.4
+Version: 0.1.5
 Authors@R: c(
     person("Yuri", "Baramykov",
         email = "lbsbmsu@mail.ru",
@@ -27,7 +27,7 @@ Authors@R: c(
     )
 Description: Provides Stable Diffusion image generation in R using the 'ggmlR'
     tensor library. Supports text-to-image and image-to-image generation with
-    multiple model versions (SD 1.x, SD 2.x, SDXL). Implements the full
+    multiple model versions (SD 1.x, SD 2.x, SDXL, Flux). Implements the full
     inference pipeline including CLIP text encoding, UNet denoising, and VAE
     encoding/decoding. Unified 'sd_generate()' entry point with automatic
     strategy selection (direct, tiled sampling, highres fix) based on output
