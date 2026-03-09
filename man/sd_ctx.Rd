@@ -5,7 +5,7 @@
 \title{Create a Stable Diffusion context}
 \usage{
 sd_ctx(
-  model_path,
+  model_path = NULL,
   vae_path = NULL,
   taesd_path = NULL,
   clip_l_path = NULL,

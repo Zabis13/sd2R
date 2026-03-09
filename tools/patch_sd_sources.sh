@@ -88,6 +88,17 @@ sed -i \
   's/^static bool sd_version_is_inpaint_or_unet_edit/[[maybe_unused]] static bool sd_version_is_inpaint_or_unet_edit/' \
   "$SD_DIR/model.h" && echo "  patched: model.h (unused function)"
 
+# 3f. json.hpp.inc: deprecated literal operator with space (C++17)
+#     operator "" _json  ->  operator ""_json
+sed -i \
+  -e 's/operator "" _json\b/operator ""_json/g' \
+  "$SD_DIR/thirdparty/json.hpp.inc" && echo "  patched: thirdparty/json.hpp.inc (literal operator spacing)"
+
+# 3g. util.h: GNU extension ##__VA_ARGS__ -> C99/C++20 __VA_OPT__
+sed -i \
+  -e 's/, ##__VA_ARGS__/ __VA_OPT__(,) __VA_ARGS__/g' \
+  "$SD_DIR/util.h" && echo "  patched: util.h (VA_OPT)"
+
 # --- 4. Defensive mask creation in generate_image (img2img) ---
 # stable-diffusion.cpp creates mask tensor at aligned width x height, but
 # caller may provide mask_image with different (or zero) dimensions.

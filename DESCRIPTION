@@ -26,16 +26,17 @@ Authors@R: c(
         comment = "Contributor to stable-diffusion.cpp")
     )
 Description: Provides Stable Diffusion image generation in R using the 'ggmlR'
-    tensor library. Supports text-to-image and image-to-image generation with
-    multiple model versions (SD 1.x, SD 2.x, SDXL, Flux). Implements the full
-    inference pipeline including CLIP text encoding, UNet denoising, and VAE
-    encoding/decoding. Unified 'sd_generate()' entry point with automatic
-    strategy selection (direct, tiled sampling, highres fix) based on output
-    resolution and available VRAM. High-resolution generation (2K, 4K+) via
-    tiled VAE decoding, tiled diffusion sampling (MultiDiffusion), and classic
-    highres fix (txt2img + upscale + tiled img2img). Multi-GPU parallel
-    generation via 'sd_generate_multi_gpu()'. Supports CPU and Vulkan GPU
-    backends. Cross-platform: Linux, macOS, Windows.
+    tensor library. Supports text-to-image and image-to-image ('img2img')
+    generation with multiple model versions (SD 1.x, SD 2.x, 'SDXL', Flux).
+    Implements the full inference pipeline including CLIP text encoding, 'UNet'
+    denoising, and 'VAE' encoding/decoding. Unified 'sd_generate()' entry point
+    with automatic strategy selection (direct, tiled sampling, 'highres' fix)
+    based on output resolution and available 'VRAM'. High-resolution generation
+    (2K, 4K+) via tiled 'VAE' decoding, tiled diffusion sampling
+    ('MultiDiffusion'), and classic 'highres' fix (txt2img + upscale + tiled
+    'img2img'). Multi-GPU parallel generation via 'sd_generate_multi_gpu()'.
+    Supports CPU and 'Vulkan' GPU backends. Cross-platform: Linux, macOS,
+    Windows.
 SystemRequirements: GNU make, curl or wget (for downloading vocabulary files during installation)
 License: MIT + file LICENSE
 URL: https://github.com/Zabis13/sdR
