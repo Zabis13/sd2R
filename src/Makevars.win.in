@@ -15,9 +15,7 @@ PKG_CPPFLAGS = -Isd -Isd/thirdparty \
   -DGGML_MAX_NAME=128 \
   -DGGML_R_PACKAGE \
   $(VULKAN_CPPFLAGS) \
-  $(PKG_CPPFLAGS_WIN) \
-  -I$(GGMLR_INCLUDE) \
-  -include r_ggml_compat_wrap.h
+  $(PKG_CPPFLAGS_WIN)
 
 PKG_CXXFLAGS = $(OPENMP_CXXFLAGS)
 PKG_LIBS = -L$(GGMLR_LIB) -lggml $(OPENMP_CXXFLAGS) $(VULKAN_LIBS) -lpthread -lm
@@ -35,4 +33,19 @@ SD_OBJECTS = \
 R_INTERFACE_OBJECTS = RcppExports.o sdR_interface.o
 
 OBJECTS = $(R_INTERFACE_OBJECTS) $(SD_OBJECTS)
+
+# Force-include r_ggml_compat_wrap.h only for sd/ objects (not Rcpp files).
+# On Windows (Cygwin g++ + MinGW headers), r_ggml_compat.h includes <stdarg.h>
+# which pulls MinGW _mingw_stdarg.h before Cygwin C++ headers, causing conflicts.
+# Rcpp files don't need stdio redirections — they use R API directly.
+SD_COMPAT_FLAGS = -I$(GGMLR_INCLUDE) -include r_ggml_compat_wrap.h
+
+sd/stable-diffusion.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/model.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/name_conversion.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/tokenize_util.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/upscaler.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/util.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/version.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/thirdparty/zip.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
 

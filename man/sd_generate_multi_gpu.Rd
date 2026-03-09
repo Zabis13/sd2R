@@ -5,7 +5,7 @@
 \title{Parallel generation across multiple GPUs}
 \usage{
 sd_generate_multi_gpu(
-  model_path,
+  model_path = NULL,
   prompts,
   negative_prompt = "",
   devices = NULL,
@@ -16,11 +16,15 @@ sd_generate_multi_gpu(
   vram_gb = NULL,
   vae_decode_only = TRUE,
   progress = TRUE,
+  diffusion_model_path = NULL,
+  vae_path = NULL,
+  clip_l_path = NULL,
+  t5xxl_path = NULL,
   ...
 )
 }
 \arguments{
-\item{model_path}{Path to the model file}
+\item{model_path}{Path to the model file (single-file models like SD 1.x/2.x/SDXL)}
 
 \item{prompts}{Character vector of prompts (one image per prompt)}
 
@@ -44,6 +48,14 @@ sd_generate_multi_gpu(
 
 \item{progress}{Print progress messages (default TRUE)}
 
+\item{diffusion_model_path}{Path to diffusion model (Flux/multi-file models)}
+
+\item{vae_path}{Path to VAE model}
+
+\item{clip_l_path}{Path to CLIP-L model}
+
+\item{t5xxl_path}{Path to T5-XXL model}
+
 \item{...}{Additional arguments passed to \code{\link{sd_generate}}}
 }
 \value{
@@ -61,14 +73,21 @@ Release any existing SD context (\code{rm(ctx); gc()}) before calling
 }
 \examples{
 \dontrun{
-ctx <- sd_ctx("model.safetensors")
-imgs <- sd_generate(ctx, "a cat")
-rm(ctx); gc()  # free GPU before multi-GPU call
-
+# Single-file model (SD 1.x/2.x/SDXL)
 imgs <- sd_generate_multi_gpu(
   "model.safetensors",
   prompts = c("a cat", "a dog", "a bird", "a fish"),
   devices = 0:1
+)
+
+# Multi-file model (Flux)
+imgs <- sd_generate_multi_gpu(
+  diffusion_model_path = "flux1-dev-Q4_K_S.gguf",
+  vae_path = "ae.safetensors",
+  clip_l_path = "clip_l.safetensors",
+  t5xxl_path = "t5-v1_1-xxl-encoder-Q5_K_M.gguf",
+  prompts = c("a cat", "a dog"),
+  model_type = "flux", devices = 0:1
 )
 }
 }

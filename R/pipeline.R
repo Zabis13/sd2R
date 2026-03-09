@@ -1198,7 +1198,7 @@ sd_convert <- function(input_path, output_path, output_type = SD_TYPE$F16,
 #' GPU via \code{callr}. Each process creates its own \code{\link{sd_ctx}} and
 #' calls \code{\link{sd_generate}}. Requires the \code{callr} package.
 #'
-#' @param model_path Path to the model file
+#' @param model_path Path to the model file (single-file models like SD 1.x/2.x/SDXL)
 #' @param prompts Character vector of prompts (one image per prompt)
 #' @param negative_prompt Negative prompt applied to all images (default "")
 #' @param devices Integer vector of Vulkan device indices (0-based). Default
@@ -1211,6 +1211,10 @@ sd_convert <- function(input_path, output_path, output_type = SD_TYPE$F16,
 #' @param vram_gb VRAM per GPU for auto-routing (default NULL)
 #' @param vae_decode_only VAE decode only (default TRUE)
 #' @param progress Print progress messages (default TRUE)
+#' @param diffusion_model_path Path to diffusion model (Flux/multi-file models)
+#' @param vae_path Path to VAE model
+#' @param clip_l_path Path to CLIP-L model
+#' @param t5xxl_path Path to T5-XXL model
 #' @param ... Additional arguments passed to \code{\link{sd_generate}}
 #' @return List of SD images, one per prompt, in original order.
 #' @note Release any existing SD context (\code{rm(ctx); gc()}) before calling
@@ -1219,17 +1223,24 @@ sd_convert <- function(input_path, output_path, output_type = SD_TYPE$F16,
 #' @export
 #' @examples
 #' \dontrun{
-#' ctx <- sd_ctx("model.safetensors")
-#' imgs <- sd_generate(ctx, "a cat")
-#' rm(ctx); gc()  # free GPU before multi-GPU call
-#'
+#' # Single-file model (SD 1.x/2.x/SDXL)
 #' imgs <- sd_generate_multi_gpu(
 #'   "model.safetensors",
 #'   prompts = c("a cat", "a dog", "a bird", "a fish"),
 #'   devices = 0:1
 #' )
+#'
+#' # Multi-file model (Flux)
+#' imgs <- sd_generate_multi_gpu(
+#'   diffusion_model_path = "flux1-dev-Q4_K_S.gguf",
+#'   vae_path = "ae.safetensors",
+#'   clip_l_path = "clip_l.safetensors",
+#'   t5xxl_path = "t5-v1_1-xxl-encoder-Q5_K_M.gguf",
+#'   prompts = c("a cat", "a dog"),
+#'   model_type = "flux", devices = 0:1
+#' )
 #' }
-sd_generate_multi_gpu <- function(model_path,
+sd_generate_multi_gpu <- function(model_path = NULL,
                                   prompts,
                                   negative_prompt = "",
                                   devices = NULL,
@@ -1240,6 +1251,10 @@ sd_generate_multi_gpu <- function(model_path,
                                   vram_gb = NULL,
                                   vae_decode_only = TRUE,
                                   progress = TRUE,
+                                  diffusion_model_path = NULL,
+                                  vae_path = NULL,
+                                  clip_l_path = NULL,
+                                  t5xxl_path = NULL,
                                   ...) {
   if (!requireNamespace("callr", quietly = TRUE)) {
     stop("Package 'callr' is required for multi-GPU generation. ",
@@ -1270,9 +1285,18 @@ sd_generate_multi_gpu <- function(model_path,
   }
   stopifnot(length(seeds) == n_prompts)
 
+  # Validate model paths
+  if (is.null(model_path) && is.null(diffusion_model_path)) {
+    stop("Either 'model_path' or 'diffusion_model_path' must be provided", call. = FALSE)
+  }
+  if (!is.null(model_path)) model_path <- normalizePath(model_path)
+  if (!is.null(diffusion_model_path)) diffusion_model_path <- normalizePath(diffusion_model_path)
+  if (!is.null(vae_path)) vae_path <- normalizePath(vae_path)
+  if (!is.null(clip_l_path)) clip_l_path <- normalizePath(clip_l_path)
+  if (!is.null(t5xxl_path)) t5xxl_path <- normalizePath(t5xxl_path)
+
   # Capture extra args
   extra_args <- list(...)
-  model_path <- normalizePath(model_path)
 
   if (progress) message(sprintf("Multi-GPU: %d prompts on %d device(s)", n_prompts, n_gpu))
 
@@ -1294,12 +1318,19 @@ sd_generate_multi_gpu <- function(model_path,
       dev <- devices[d]
 
       job <- callr::r_bg(
-        function(model_path, prompt, negative_prompt, width, height, seed,
+        function(model_path, diffusion_model_path, vae_path, clip_l_path,
+                 t5xxl_path, prompt, negative_prompt, width, height, seed,
                  model_type, vram_gb, vae_decode_only, dev, extra_args) {
           Sys.setenv(SD_VK_DEVICE = as.character(dev))
           library(sdR)
-          ctx <- sd_ctx(model_path, model_type = model_type,
-                        vram_gb = vram_gb, vae_decode_only = vae_decode_only)
+          ctx <- sd_ctx(model_path = model_path,
+                        diffusion_model_path = diffusion_model_path,
+                        vae_path = vae_path,
+                        clip_l_path = clip_l_path,
+                        t5xxl_path = t5xxl_path,
+                        model_type = model_type,
+                        vram_gb = vram_gb,
+                        vae_decode_only = vae_decode_only)
           args <- c(list(ctx = ctx, prompt = prompt,
                          negative_prompt = negative_prompt,
                          width = as.integer(width), height = as.integer(height),
@@ -1310,6 +1341,10 @@ sd_generate_multi_gpu <- function(model_path,
         },
         args = list(
           model_path = model_path,
+          diffusion_model_path = diffusion_model_path,
+          vae_path = vae_path,
+          clip_l_path = clip_l_path,
+          t5xxl_path = t5xxl_path,
           prompt = prompts[idx],
           negative_prompt = negative_prompt,
           width = width, height = height, seed = seeds[idx],

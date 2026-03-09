@@ -28,7 +28,8 @@ for (i in seq_len(2)) {
     width = 768L, height = 768L,
     sample_steps = 8L, cfg_scale = 1.0, seed = as.integer(i),
     sample_method = SAMPLE_METHOD$EULER,
-    scheduler = SCHEDULER$DISCRETE
+    scheduler = SCHEDULER$DISCRETE,
+    vae_mode = "tiled"
   )
   elapsed <- (proc.time() - t0)[["elapsed"]]
   cat(sprintf("[%d/2] Generated %dx%d in %.1fs\n", i, imgs[[1]]$width, imgs[[1]]$height, elapsed))

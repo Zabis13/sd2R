@@ -2906,7 +2906,20 @@ public:
                 };
                 sd_tiling_non_square(x, result, vae_scale_factor, tile_size_x, tile_size_y, tile_overlap, on_tiling);
             } else {
-                first_stage_model->compute(n_threads, x, true, &result, work_ctx);
+                // PATCH(sdR): fallback to tiled VAE if direct decode fails (VRAM)
+                if (!first_stage_model->compute(n_threads, x, true, &result, work_ctx)) {
+                    LOG_WARN("VAE direct decode failed, falling back to tiled VAE decode");
+                    first_stage_model->free_compute_buffer();
+                    float tile_overlap;
+                    int tile_size_x, tile_size_y;
+                    sd_tiling_params_t fallback_tiling = {};
+                    fallback_tiling.target_overlap = 0.25f;
+                    get_tile_sizes(tile_size_x, tile_size_y, tile_overlap, fallback_tiling, x->ne[0], x->ne[1]);
+                    auto on_tiling = [&](ggml_tensor* in, ggml_tensor* out, bool init) {
+                        first_stage_model->compute(n_threads, in, true, &out, nullptr);
+                    };
+                    sd_tiling_non_square(x, result, vae_scale_factor, tile_size_x, tile_size_y, tile_overlap, on_tiling);
+                }
             }
             first_stage_model->free_compute_buffer();
             process_vae_output_tensor(result);

@@ -48,7 +48,8 @@ imgs_flux <- sd_generate(
   width = 768L, height = 768L,
   sample_steps = 8L, seed = 42L,
   sample_method = SAMPLE_METHOD$EULER,
-  scheduler = SCHEDULER$DISCRETE
+  scheduler = SCHEDULER$DISCRETE,
+  vae_mode = "tiled"
 )
 elapsed <- (proc.time() - t0)[["elapsed"]]
 cat(sprintf("Generated %d image(s): %dx%d in %.1fs\n",
@@ -105,7 +106,8 @@ imgs_flux_i2i <- sd_generate(
   strength = 0.4,
   sample_steps = 8L, seed = 42L,
   sample_method = SAMPLE_METHOD$EULER,
-  scheduler = SCHEDULER$DISCRETE
+  scheduler = SCHEDULER$DISCRETE,
+  vae_mode = "tiled"
 )
 elapsed <- (proc.time() - t0)[["elapsed"]]
 cat(sprintf("Generated %d image(s): %dx%d in %.1fs\n",
@@ -121,7 +123,8 @@ imgs_flux_1k <- sd_generate(
   width = 1024L, height = 1024L,
   sample_steps = 8L, seed = 42L,
   sample_method = SAMPLE_METHOD$EULER,
-  scheduler = SCHEDULER$DISCRETE
+  scheduler = SCHEDULER$DISCRETE,
+  vae_mode = "tiled"
 )
 elapsed <- (proc.time() - t0)[["elapsed"]]
 cat(sprintf("Generated %d image(s): %dx%d in %.1fs\n",
@@ -149,7 +152,8 @@ if (n_gpu > 1L) {
     model_type = "flux",
     sample_steps = 8L,
     sample_method = SAMPLE_METHOD$EULER,
-    scheduler = SCHEDULER$DISCRETE
+    scheduler = SCHEDULER$DISCRETE,
+    vae_mode = "tiled"
   )
   elapsed <- (proc.time() - t0)[["elapsed"]]
   cat(sprintf("Multi-GPU: generated %d image(s) across %d GPUs in %.1fs\n",

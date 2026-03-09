@@ -13,8 +13,7 @@ PKG_CPPFLAGS = -Isd -Isd/thirdparty \
   -DGGML_USE_CPU -D_GNU_SOURCE \
   -DGGML_MAX_NAME=128 \
   -DGGML_R_PACKAGE \
-  $(OPENMP_CPPFLAGS) $(VULKAN_CPPFLAGS) \
-  -include $(GGMLR_INCLUDE)/r_ggml_compat.h
+  $(OPENMP_CPPFLAGS) $(VULKAN_CPPFLAGS)
 
 PKG_CXXFLAGS = $(OPENMP_CXXFLAGS)
 PKG_CFLAGS = $(OPENMP_CFLAGS)
@@ -33,4 +32,17 @@ SD_OBJECTS = \
 R_INTERFACE_OBJECTS = RcppExports.o sdR_interface.o
 
 OBJECTS = $(R_INTERFACE_OBJECTS) $(SD_OBJECTS)
+
+# Force-include r_ggml_compat.h only for sd/ objects (not Rcpp files).
+# Rcpp files use R API directly and don't need stdio redirections.
+SD_COMPAT_FLAGS = -include $(GGMLR_INCLUDE)/r_ggml_compat.h
+
+sd/stable-diffusion.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/model.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/name_conversion.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/tokenize_util.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/upscaler.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/util.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/version.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/thirdparty/zip.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
 
