@@ -89,13 +89,15 @@ test_that("vae_mode='auto' activates for 4096x4096 decode scenario", {
 # --- .estimate_vae_vram tests ---
 
 test_that(".estimate_vae_vram returns correct values for sd1", {
-  # 512x512 * 2048 * 1 = 536870912 (~512 MB)
-  expect_equal(sd2R:::.estimate_vae_vram(512, 512, "sd1", 1L), 512 * 512 * 2048)
+  # per_pixel = 128 ch * 4 B * 18 live_tensors = 9216
+  # 512x512 * 9216 * 1 = 2415919104 (~2.25 GB)
+  expect_equal(sd2R:::.estimate_vae_vram(512, 512, "sd1", 1L), 512 * 512 * 9216)
 })
 
 test_that(".estimate_vae_vram returns correct values for flux", {
-  # 1024x1024 * 4096 * 1 = 4294967296 (~4 GB)
-  expect_equal(sd2R:::.estimate_vae_vram(1024, 1024, "flux", 1L), 1024 * 1024 * 4096)
+  # per_pixel = 128 ch * 4 B * 18 live_tensors = 9216
+  # 1024x1024 * 9216 * 1 = 9663676416 (~9 GB)
+  expect_equal(sd2R:::.estimate_vae_vram(1024, 1024, "flux", 1L), 1024 * 1024 * 9216)
 })
 
 test_that(".estimate_vae_vram scales with batch", {

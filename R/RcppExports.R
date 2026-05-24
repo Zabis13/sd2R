@@ -9,6 +9,14 @@ sd_clear_progress_file <- function() {
     invisible(.Call(`_sd2R_sd_clear_progress_file`))
 }
 
+sd_set_preview_dump <- function(prefix, mode, interval, denoised, noisy) {
+    invisible(.Call(`_sd2R_sd_set_preview_dump`, prefix, mode, interval, denoised, noisy))
+}
+
+sd_clear_preview_dump <- function() {
+    invisible(.Call(`_sd2R_sd_clear_preview_dump`))
+}
+
 sd_set_log_file <- function(path) {
     invisible(.Call(`_sd2R_sd_set_log_file`, path))
 }

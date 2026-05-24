@@ -199,6 +199,53 @@ void sd_clear_progress_file() {
     }
 }
 
+// --- Preview callback: dump per-step decoded latent to PPM (diagnostic) ---
+// Writes <prefix>NN.ppm for each preview frame. Pure stdio, safe from the
+// worker thread (no R API calls). PPM P6 = trivial raw-RGB, no deps.
+static std::string r_sd_preview_prefix;
+
+static void r_sd_preview_callback(int step, int frame_count, sd_image_t* frames,
+                                  bool is_noisy, void* /*data*/) {
+    if (r_sd_preview_prefix.empty() || frames == nullptr) return;
+    for (int f = 0; f < frame_count; ++f) {
+        const sd_image_t& img = frames[f];
+        if (!img.data || img.width == 0 || img.height == 0) continue;
+        char path[1024];
+        std::snprintf(path, sizeof(path), "%s%03d%s.ppm",
+                      r_sd_preview_prefix.c_str(), step, is_noisy ? "_noisy" : "");
+        FILE* fp = std::fopen(path, "wb");
+        if (!fp) continue;
+        // PPM P6 expects 3-channel RGB; expand/clamp channel count.
+        std::fprintf(fp, "P6\n%u %u\n255\n", img.width, img.height);
+        const uint32_t ch = img.channel;
+        for (size_t px = 0; px < (size_t)img.width * img.height; ++px) {
+            const uint8_t* p = img.data + px * ch;
+            uint8_t rgb[3] = {
+                p[0],
+                ch > 1 ? p[1] : p[0],
+                ch > 2 ? p[2] : p[0]
+            };
+            std::fwrite(rgb, 1, 3, fp);
+        }
+        std::fclose(fp);
+    }
+}
+
+// [[Rcpp::export]]
+void sd_set_preview_dump(std::string prefix, std::string mode, int interval,
+                         bool denoised, bool noisy) {
+    r_sd_preview_prefix = prefix;
+    enum preview_t pm = str_to_preview(mode.c_str());
+    sd_set_preview_callback(r_sd_preview_callback, pm, interval,
+                            denoised, noisy, nullptr);
+}
+
+// [[Rcpp::export]]
+void sd_clear_preview_dump() {
+    r_sd_preview_prefix.clear();
+    sd_set_preview_callback(nullptr, PREVIEW_NONE, 1, false, false, nullptr);
+}
+
 // [[Rcpp::export]]
 void sd_set_log_file(std::string path) {
     r_sd_log_file = path;

@@ -2,7 +2,7 @@
 # Flux.1 generate profiler — tests 1-5, per-op Vulkan timings
 # Run: Rscript /mnt/Data2/DS_projects/sd2R/inst/examples/test_generate_flux.R
 
-Sys.setenv(GGML_VK_PERF_LOGGER = "1")
+#Sys.setenv(GGML_VK_PERF_LOGGER = "1")
 
 library(sd2R)
 

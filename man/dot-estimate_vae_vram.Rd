@@ -19,7 +19,15 @@
 Estimated peak VRAM in bytes
 }
 \description{
-Rough upper bound based on the largest intermediate feature map
-(conv layer with ~512 channels, f32). SDXL/Flux use wider channels.
+Analytic upper bound on the peak compute-buffer size of the VAE decoder.
+The peak occurs in the ResNet block that runs at full pixel resolution
+(W x H) with the decoder's base channel width. The per-pixel cost is
+derived from architecture (base channels x dtype bytes); the only
+empirical constant is \code{live_tensors} — how many such full-res
+tensors ggml's graph allocator keeps alive simultaneously. That value
+is calibrated against an observed Flux failure: a 2048x1024 decode
+requested 19238223904 bytes, i.e. 19238223904 / (2048*1024) ~= 9175
+B/px, and 9175 / (128 ch * 4 B) ~= 17.9 live full-res tensors. We round
+up to 18 for a safe over-estimate (tiling should engage rather than OOM).
 }
 \keyword{internal}

@@ -128,21 +128,12 @@ CLIP-L + T5-XXL text encoders, VAE. `sample_steps = 10`.
 
 | Test | AMD RX 9070 (16 GB) | Tesla P100 (16 GB) | 2x Tesla T4 (16 GB) |
 |---|---|---|---|
-| 1. 768x768 direct | 44.2 s | 94.0 s | 133.1 s |
-| 2. 1024x1024 tiled VAE | 163.6 s | 151.4 s | 243.6 s |
-| 3. 2048x1024 highres fix | 309.7 s | 312.5 s | 492.2 s |
-| 4. img2img 768x768 direct | 29.6 s | 51.0 s | 73.5 s |
-| 5. 1024x1024 direct | 163.0 s | 152.2 s | 243.3 s |
+| 1. 768x768 direct | 13.94 s | 94.0 s | 133.1 s |
+| 2. 1024x1024 tiled VAE | 25.32 s | 151.4 s | 243.6 s |
+| 3. 2048x1024 highres fix | 52.53 s | 312.5 s | 492.2 s |
+| 4. img2img 768x768 direct | 8.73 s | 51.0 s | 73.5 s |
+| 5. 1024x1024 direct | 25.40 s | 152.2 s | 243.3 s |
 | 6. Multi-GPU 4 prompts | -- | -- | 284.9 s (4 img) |
-
-### FLUX.1-dev Q4_K_S — 25 steps
-
-CLIP-L + T5-XXL (Q5_K_M) text encoders, VAE. `sample_steps = 25`.
-
-| Test | AMD RX 9070 (16 GB) | 2x Tesla T4 (16 GB) |
-|---|---|---|
-| 768x768 direct | 110.8 s | -- |
-| 1024x1024 direct | -- | 553.1 s |
 
 ### Model size comparison
 

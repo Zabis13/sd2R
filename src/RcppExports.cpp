@@ -29,6 +29,29 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// sd_set_preview_dump
+void sd_set_preview_dump(std::string prefix, std::string mode, int interval, bool denoised, bool noisy);
+RcppExport SEXP _sd2R_sd_set_preview_dump(SEXP prefixSEXP, SEXP modeSEXP, SEXP intervalSEXP, SEXP denoisedSEXP, SEXP noisySEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type prefix(prefixSEXP);
+    Rcpp::traits::input_parameter< std::string >::type mode(modeSEXP);
+    Rcpp::traits::input_parameter< int >::type interval(intervalSEXP);
+    Rcpp::traits::input_parameter< bool >::type denoised(denoisedSEXP);
+    Rcpp::traits::input_parameter< bool >::type noisy(noisySEXP);
+    sd_set_preview_dump(prefix, mode, interval, denoised, noisy);
+    return R_NilValue;
+END_RCPP
+}
+// sd_clear_preview_dump
+void sd_clear_preview_dump();
+RcppExport SEXP _sd2R_sd_clear_preview_dump() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    sd_clear_preview_dump();
+    return R_NilValue;
+END_RCPP
+}
 // sd_set_log_file
 void sd_set_log_file(std::string path);
 RcppExport SEXP _sd2R_sd_set_log_file(SEXP pathSEXP) {
@@ -302,6 +325,8 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_sd2R_sd_set_progress_file", (DL_FUNC) &_sd2R_sd_set_progress_file, 1},
     {"_sd2R_sd_clear_progress_file", (DL_FUNC) &_sd2R_sd_clear_progress_file, 0},
+    {"_sd2R_sd_set_preview_dump", (DL_FUNC) &_sd2R_sd_set_preview_dump, 5},
+    {"_sd2R_sd_clear_preview_dump", (DL_FUNC) &_sd2R_sd_clear_preview_dump, 0},
     {"_sd2R_sd_set_log_file", (DL_FUNC) &_sd2R_sd_set_log_file, 1},
     {"_sd2R_sd_clear_log_file", (DL_FUNC) &_sd2R_sd_clear_log_file, 0},
     {"_sd2R_sd_set_verbose", (DL_FUNC) &_sd2R_sd_set_verbose, 1},

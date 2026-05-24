@@ -20,7 +20,7 @@ sd_ctx(
   free_params_immediately = FALSE,
   keep_clip_on_cpu = FALSE,
   keep_vae_on_cpu = FALSE,
-  vae_conv_direct = FALSE,
+  vae_conv_direct = TRUE,
   diffusion_conv_direct = FALSE,
   diffusion_flash_attn = TRUE,
   rng_type = RNG_TYPE$CUDA,
@@ -79,7 +79,7 @@ not reuse the context. Default is FALSE.}
 
 \item{keep_vae_on_cpu}{Keep VAE on CPU even when using GPU}
 
-\item{vae_conv_direct}{Use direct Conv2d implementation in VAE (default FALSE).
+\item{vae_conv_direct}{Use direct Conv2d implementation in VAE (default TRUE).
 Faster on GPU; skips im2col and uses direct convolution kernels.}
 
 \item{diffusion_conv_direct}{Use direct Conv2d in diffusion model (default FALSE).}

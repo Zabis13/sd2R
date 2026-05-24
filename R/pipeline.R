@@ -21,7 +21,7 @@
 #'   not reuse the context. Default is FALSE.
 #' @param keep_clip_on_cpu Keep CLIP model on CPU even when using GPU
 #' @param keep_vae_on_cpu Keep VAE on CPU even when using GPU
-#' @param vae_conv_direct Use direct Conv2d implementation in VAE (default FALSE).
+#' @param vae_conv_direct Use direct Conv2d implementation in VAE (default TRUE).
 #'   Faster on GPU; skips im2col and uses direct convolution kernels.
 #' @param diffusion_conv_direct Use direct Conv2d in diffusion model (default FALSE).
 #' @param diffusion_flash_attn Enable flash attention for diffusion model
@@ -1389,8 +1389,16 @@ sd_convert <- function(input_path, output_path, output_type = SD_TYPE$F16,
 
 #' Estimate peak VAE VRAM usage in bytes
 #'
-#' Rough upper bound based on the largest intermediate feature map
-#' (conv layer with ~512 channels, f32). SDXL/Flux use wider channels.
+#' Analytic upper bound on the peak compute-buffer size of the VAE decoder.
+#' The peak occurs in the ResNet block that runs at full pixel resolution
+#' (W x H) with the decoder's base channel width. The per-pixel cost is
+#' derived from architecture (base channels x dtype bytes); the only
+#' empirical constant is \code{live_tensors} — how many such full-res
+#' tensors ggml's graph allocator keeps alive simultaneously. That value
+#' is calibrated against an observed Flux failure: a 2048x1024 decode
+#' requested 19238223904 bytes, i.e. 19238223904 / (2048*1024) ~= 9175
+#' B/px, and 9175 / (128 ch * 4 B) ~= 17.9 live full-res tensors. We round
+#' up to 18 for a safe over-estimate (tiling should engage rather than OOM).
 #'
 #' @param width Image width in pixels
 #' @param height Image height in pixels
@@ -1399,11 +1407,16 @@ sd_convert <- function(input_path, output_path, output_type = SD_TYPE$F16,
 #' @return Estimated peak VRAM in bytes
 #' @keywords internal
 .estimate_vae_vram <- function(width, height, model_type = "sd1", batch = 1L) {
-  peak_factor <- switch(model_type,
-    sdxl = , flux = 4096,  # 512 channels * 4 bytes * 2 (wider)
-    2048                    # 512 channels * 4 bytes
-  )
-  as.numeric(width) * as.numeric(height) * peak_factor * as.numeric(batch)
+  # Decoder base channel width at the full-resolution level. SD/SDXL/Flux
+  # VAEs all use 128 channels at this stage.
+  base_channels <- 128
+  dtype_bytes   <- 4    # f32 compute buffer
+  # Empirically calibrated: count of simultaneously-live full-res tensors
+  # in ggml's gallocr reservation for the VAE decode graph (see @details).
+  live_tensors  <- 18
+
+  per_pixel <- base_channels * dtype_bytes * live_tensors
+  as.numeric(width) * as.numeric(height) * per_pixel * as.numeric(batch)
 }
 
 #' Resolve VAE tiling mode to boolean
