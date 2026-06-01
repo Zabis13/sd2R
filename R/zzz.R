@@ -47,6 +47,20 @@ SCHEDULER <- list(
   LCM         = 9L
 )
 
+#' Preview decode modes
+#'
+#' Mode strings accepted by the preview callback (see
+#' \code{\link{sd_preview_start}}). \code{"proj"} is a fast linear projection
+#' of the latent (cheap, rough), \code{"tae"} uses the tiny autoencoder
+#' (needs \code{taesd_path}), \code{"vae"} runs the full VAE (slow, accurate).
+#' @export
+PREVIEW <- list(
+  NONE = "none",
+  PROJ = "proj",
+  TAE  = "tae",
+  VAE  = "vae"
+)
+
 #' Prediction types
 #' @export
 PREDICTION <- list(

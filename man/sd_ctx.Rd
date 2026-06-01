@@ -20,6 +20,7 @@ sd_ctx(
   free_params_immediately = FALSE,
   keep_clip_on_cpu = FALSE,
   keep_vae_on_cpu = FALSE,
+  enable_mmap = FALSE,
   vae_conv_direct = TRUE,
   diffusion_conv_direct = FALSE,
   diffusion_flash_attn = TRUE,
@@ -79,6 +80,12 @@ not reuse the context. Default is FALSE.}
 
 \item{keep_vae_on_cpu}{Keep VAE on CPU even when using GPU}
 
+\item{enable_mmap}{Memory-map model weights from disk instead of reading them
+into a malloc'd buffer (default FALSE). Lowers RAM footprint for large
+models (e.g. Flux); pages are loaded on demand by the OS and shared across
+processes. Ignored for zip-archived weights. May slow the first generation
+slightly as pages fault in.}
+
 \item{vae_conv_direct}{Use direct Conv2d implementation in VAE (default TRUE).
 Faster on GPU; skips im2col and uses direct convolution kernels.}
 
@@ -97,9 +104,11 @@ GPU drivers or backends.}
 \item{flow_shift}{Flow shift value for Flux models}
 
 \item{model_type}{Model architecture hint: \code{"sd1"}, \code{"sd2"},
-\code{"sdxl"}, \code{"flux"}, or \code{"sd3"}. Used by
+\code{"sdxl"}, \code{"flux"}, \code{"sd3"}, or \code{"auto"}. Used by
 \code{\link{sd_generate}} to determine native resolution and tile sizes.
-Default \code{"sd1"}.}
+With \code{"auto"}, the type is detected from a sibling \code{config.json}
+then the filename (GGUF-metadata detection is a future hook); detection
+errors with a hint if it cannot decide. Default \code{"sd1"}.}
 
 \item{vram_gb}{Override available VRAM in GB. When set, disables auto-detection
 and uses this value for strategy routing. Default \code{NULL} (auto-detect

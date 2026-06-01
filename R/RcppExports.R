@@ -9,8 +9,8 @@ sd_clear_progress_file <- function() {
     invisible(.Call(`_sd2R_sd_clear_progress_file`))
 }
 
-sd_set_preview_dump <- function(prefix, mode, interval, denoised, noisy) {
-    invisible(.Call(`_sd2R_sd_set_preview_dump`, prefix, mode, interval, denoised, noisy))
+sd_set_preview_dump <- function(path, mode, interval, denoised, noisy) {
+    invisible(.Call(`_sd2R_sd_set_preview_dump`, path, mode, interval, denoised, noisy))
 }
 
 sd_clear_preview_dump <- function() {
@@ -63,6 +63,54 @@ sd_create_context_poll <- function() {
 
 sd_create_context_result <- function() {
     .Call(`_sd2R_sd_create_context_result`)
+}
+
+sd_ctx_version_cpp <- function(ctx_sexp) {
+    .Call(`_sd2R_sd_ctx_version_cpp`, ctx_sexp)
+}
+
+sd_ctx_supports_ref_cpp <- function(ctx_sexp) {
+    .Call(`_sd2R_sd_ctx_supports_ref_cpp`, ctx_sexp)
+}
+
+sd_encode_text_cpp <- function(ctx_sexp, prompt, clip_skip, width, height) {
+    .Call(`_sd2R_sd_encode_text_cpp`, ctx_sexp, prompt, clip_skip, width, height)
+}
+
+sd_encode_image_cpp <- function(ctx_sexp, image) {
+    .Call(`_sd2R_sd_encode_image_cpp`, ctx_sexp, image)
+}
+
+sd_decode_latent_cpp <- function(ctx_sexp, latent) {
+    .Call(`_sd2R_sd_decode_latent_cpp`, ctx_sexp, latent)
+}
+
+sd_sample_cpp <- function(ctx_sexp, init_latent, noise, cond, uncond, sample_method, scheduler, sample_steps, cfg_scale, eta, strength, custom_sigmas) {
+    .Call(`_sd2R_sd_sample_cpp`, ctx_sexp, init_latent, noise, cond, uncond, sample_method, scheduler, sample_steps, cfg_scale, eta, strength, custom_sigmas)
+}
+
+sd_sampler_sigmas_cpp <- function(ctx_sexp, scheduler, sample_method, sample_steps, width, height) {
+    .Call(`_sd2R_sd_sampler_sigmas_cpp`, ctx_sexp, scheduler, sample_method, sample_steps, width, height)
+}
+
+sd_sampler_begin_cpp <- function(ctx_sexp) {
+    invisible(.Call(`_sd2R_sd_sampler_begin_cpp`, ctx_sexp))
+}
+
+sd_sampler_end_cpp <- function(ctx_sexp) {
+    invisible(.Call(`_sd2R_sd_sampler_end_cpp`, ctx_sexp))
+}
+
+sd_noise_scale_cpp <- function(ctx_sexp, init_latent, noise, sigma0) {
+    .Call(`_sd2R_sd_noise_scale_cpp`, ctx_sexp, init_latent, noise, sigma0)
+}
+
+sd_inverse_noise_scale_cpp <- function(ctx_sexp, x_in, sigma_last) {
+    .Call(`_sd2R_sd_inverse_noise_scale_cpp`, ctx_sexp, x_in, sigma_last)
+}
+
+sd_denoise_step_cpp <- function(ctx_sexp, x_in, sigma, cond, uncond, cfg_scale, step, total_steps) {
+    .Call(`_sd2R_sd_denoise_step_cpp`, ctx_sexp, x_in, sigma, cond, uncond, cfg_scale, step, total_steps)
 }
 
 sd_generate_image <- function(ctx_sexp, params) {

@@ -25,7 +25,12 @@ sd_generate(
   vae_tile_size = 64L,
   vae_tile_overlap = 0.25,
   cache_mode = c("off", "easy", "ucache"),
-  cache_config = NULL
+  cache_config = NULL,
+  params = NULL,
+  preview = FALSE,
+  preview_path = NULL,
+  preview_mode = PREVIEW$PROJ,
+  preview_interval = 1L
 )
 }
 \arguments{
@@ -78,6 +83,23 @@ reserve). Default \code{"auto"}.}
 
 \item{cache_config}{Optional fine-tuned cache config from
 \code{\link{sd_cache_params}}.}
+
+\item{params}{Optional baseline list from \code{\link{sd_default_params}}.
+Supplies defaults for any generation argument not passed explicitly;
+explicitly named arguments to \code{sd_generate()} always take precedence.
+\code{NULL} (default) keeps the built-in defaults.}
+
+\item{preview}{If \code{TRUE}, write intermediate preview frames during
+generation to \code{preview_path}; poll with \code{\link{sd_read_preview}}.
+Default \code{FALSE} (zero cost). See \code{\link{sd_preview_start}}.}
+
+\item{preview_path}{File path for the preview PPM. Defaults to a tempfile
+when \code{preview = TRUE}.}
+
+\item{preview_mode}{Preview decode mode (see \code{PREVIEW}); default
+\code{"proj"}.}
+
+\item{preview_interval}{Emit a preview every N steps (default 1).}
 }
 \value{
 List of SD images (or single image for highres fix path).

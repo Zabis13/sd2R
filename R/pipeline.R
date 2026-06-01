@@ -21,6 +21,11 @@
 #'   not reuse the context. Default is FALSE.
 #' @param keep_clip_on_cpu Keep CLIP model on CPU even when using GPU
 #' @param keep_vae_on_cpu Keep VAE on CPU even when using GPU
+#' @param enable_mmap Memory-map model weights from disk instead of reading them
+#'   into a malloc'd buffer (default FALSE). Lowers RAM footprint for large
+#'   models (e.g. Flux); pages are loaded on demand by the OS and shared across
+#'   processes. Ignored for zip-archived weights. May slow the first generation
+#'   slightly as pages fault in.
 #' @param vae_conv_direct Use direct Conv2d implementation in VAE (default TRUE).
 #'   Faster on GPU; skips im2col and uses direct convolution kernels.
 #' @param diffusion_conv_direct Use direct Conv2d in diffusion model (default FALSE).
@@ -32,9 +37,11 @@
 #' @param lora_apply_mode LoRA application mode (see \code{LORA_APPLY_MODE})
 #' @param flow_shift Flow shift value for Flux models
 #' @param model_type Model architecture hint: \code{"sd1"}, \code{"sd2"},
-#'   \code{"sdxl"}, \code{"flux"}, or \code{"sd3"}. Used by
+#'   \code{"sdxl"}, \code{"flux"}, \code{"sd3"}, or \code{"auto"}. Used by
 #'   \code{\link{sd_generate}} to determine native resolution and tile sizes.
-#'   Default \code{"sd1"}.
+#'   With \code{"auto"}, the type is detected from a sibling \code{config.json}
+#'   then the filename (GGUF-metadata detection is a future hook); detection
+#'   errors with a hint if it cannot decide. Default \code{"sd1"}.
 #' @param vram_gb Override available VRAM in GB. When set, disables auto-detection
 #'   and uses this value for strategy routing. Default \code{NULL} (auto-detect
 #'   from Vulkan device).
@@ -97,6 +104,7 @@ sd_ctx <- function(model_path = NULL,
                    free_params_immediately = FALSE,
                    keep_clip_on_cpu = FALSE,
                    keep_vae_on_cpu = FALSE,
+                   enable_mmap = FALSE,
                    vae_conv_direct = TRUE,
                    diffusion_conv_direct = FALSE,
                    diffusion_flash_attn = TRUE,
@@ -120,7 +128,13 @@ sd_ctx <- function(model_path = NULL,
   if (is.null(model_path) && is.null(diffusion_model_path)) {
     stop("Either model_path or diffusion_model_path must be provided", call. = FALSE)
   }
-  model_type <- match.arg(model_type, c("sd1", "sd2", "sdxl", "flux", "sd3"))
+  model_type <- match.arg(model_type,
+                          c("sd1", "sd2", "sdxl", "flux", "sd3", "auto"))
+  if (identical(model_type, "auto")) {
+    detect_path <- if (!is.null(model_path)) model_path else diffusion_model_path
+    model_type <- .resolve_model_type("auto", detect_path)
+    if (verbose) message("Detected model_type: ", model_type)
+  }
 
   params <- list(
     model_path = if (!is.null(model_path)) normalizePath(model_path) else "",
@@ -130,6 +144,7 @@ sd_ctx <- function(model_path = NULL,
     free_params_immediately = free_params_immediately,
     keep_clip_on_cpu = keep_clip_on_cpu,
     keep_vae_on_cpu = keep_vae_on_cpu,
+    enable_mmap = enable_mmap,
     vae_conv_direct = vae_conv_direct,
     diffusion_conv_direct = diffusion_conv_direct,
     diffusion_flash_attn = diffusion_flash_attn,
@@ -229,6 +244,18 @@ sd_ctx <- function(model_path = NULL,
 #'   (EasyCache), or \code{"ucache"} (UCache).
 #' @param cache_config Optional fine-tuned cache config from
 #'   \code{\link{sd_cache_params}}.
+#' @param params Optional baseline list from \code{\link{sd_default_params}}.
+#'   Supplies defaults for any generation argument not passed explicitly;
+#'   explicitly named arguments to \code{sd_generate()} always take precedence.
+#'   \code{NULL} (default) keeps the built-in defaults.
+#' @param preview If \code{TRUE}, write intermediate preview frames during
+#'   generation to \code{preview_path}; poll with \code{\link{sd_read_preview}}.
+#'   Default \code{FALSE} (zero cost). See \code{\link{sd_preview_start}}.
+#' @param preview_path File path for the preview PPM. Defaults to a tempfile
+#'   when \code{preview = TRUE}.
+#' @param preview_mode Preview decode mode (see \code{PREVIEW}); default
+#'   \code{"proj"}.
+#' @param preview_interval Emit a preview every N steps (default 1).
 #' @return List of SD images (or single image for highres fix path).
 #' @export
 #' @examples
@@ -263,7 +290,44 @@ sd_generate <- function(ctx,
                         vae_tile_size = 64L,
                         vae_tile_overlap = 0.25,
                         cache_mode = c("off", "easy", "ucache"),
-                        cache_config = NULL) {
+                        cache_config = NULL,
+                        params = NULL,
+                        preview = FALSE,
+                        preview_path = NULL,
+                        preview_mode = PREVIEW$PROJ,
+                        preview_interval = 1L) {
+  # Merge a params baseline (sd_default_params()) under the explicit args.
+  # An argument counts as "explicit" only when the caller named it; for those,
+  # the passed value wins. Everything else is taken from `params`, falling back
+  # to the built-in defaults. This keeps every existing call site unchanged.
+  if (!is.null(params)) {
+    called   <- names(match.call())[-(1:2)]  # drop fn name + ctx (prompt may stay)
+    defs     <- sd_default_params()
+    pv <- function(nm, val) {
+      if (nm %in% called) return(val)
+      if (nm %in% names(params)) return(params[[nm]])
+      defs[[nm]]
+    }
+    negative_prompt  <- pv("negative_prompt",  negative_prompt)
+    width            <- pv("width",            width)
+    height           <- pv("height",           height)
+    strength         <- pv("strength",         strength)
+    sample_method    <- pv("sample_method",    sample_method)
+    sample_steps     <- pv("sample_steps",     sample_steps)
+    cfg_scale        <- pv("cfg_scale",        cfg_scale)
+    seed             <- pv("seed",             seed)
+    batch_count      <- pv("batch_count",      batch_count)
+    scheduler        <- pv("scheduler",        scheduler)
+    clip_skip        <- pv("clip_skip",        clip_skip)
+    eta              <- pv("eta",              eta)
+    hr_strength      <- pv("hr_strength",      hr_strength)
+    vae_mode         <- pv("vae_mode",         vae_mode)
+    vae_tile_size    <- pv("vae_tile_size",    vae_tile_size)
+    vae_tile_overlap <- pv("vae_tile_overlap", vae_tile_overlap)
+    cache_mode       <- pv("cache_mode",       cache_mode)
+    cache_config     <- pv("cache_config",     cache_config)
+  }
+
   # Resolve string names to integer enum values
   if (is.character(sample_method)) {
     sm <- SAMPLE_METHOD[[sample_method]]
@@ -274,6 +338,19 @@ sd_generate <- function(ctx,
     sc <- SCHEDULER[[scheduler]]
     if (is.null(sc)) stop("Unknown scheduler: ", scheduler, call. = FALSE)
     scheduler <- sc
+  }
+
+  # Live preview: zero cost unless preview = TRUE. Installs the file-based
+  # preview callback for the duration of this call; poll preview_path with
+  # sd_read_preview() from another process/handler. The path is stored on the
+  # returned object's attribute so callers know where to look.
+  if (isTRUE(preview)) {
+    if (is.null(preview_path)) {
+      preview_path <- tempfile("sd_preview_", fileext = ".ppm")
+    }
+    sd_preview_start(preview_path, mode = preview_mode,
+                     interval = preview_interval)
+    on.exit(sd_preview_stop(), add = TRUE)
   }
 
   # img2img: default to init_image dimensions when width/height not specified

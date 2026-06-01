@@ -53,6 +53,34 @@ MODEL_PRESETS <- list(
 sampler_names  <- names(sd2R::SAMPLE_METHOD)
 scheduler_names <- names(sd2R::SCHEDULER)
 
+# ---------- Classify files by role (based on filename) ----------
+# Returns a named list of character vectors: $main, $diffusion, $vae, $clip_l, $t5xxl
+# Each file appears only in dropdowns where it can plausibly be used.
+classify_files <- function(files) {
+  if (length(files) == 0) {
+    return(list(main = character(), diffusion = character(),
+                vae = character(), clip_l = character(), t5xxl = character()))
+  }
+  fl <- tolower(files)
+
+  is_vae      <- grepl("(^|[^a-z])(vae|\\bae\\b)", fl)
+  is_clip     <- grepl("clip", fl) & !grepl("clip_vision|clip-vision", fl)
+  is_t5       <- grepl("t5", fl)
+  is_diff     <- grepl("flux|sd3|dit|unet", fl)
+  is_aux_only <- grepl("upscaler|esrgan|taesd|lora|controlnet|control_net|photo_maker|clip_vision|clip-vision", fl)
+
+  # Main checkpoint = anything that isn't a recognized auxiliary or diffusion-only file
+  is_main <- !is_vae & !is_clip & !is_t5 & !is_diff & !is_aux_only
+
+  list(
+    main      = files[is_main],
+    diffusion = files[is_diff],
+    vae       = files[is_vae],
+    clip_l    = files[is_clip],
+    t5xxl     = files[is_t5]
+  )
+}
+
 # ---------- Auto-assign model roles by filename ----------
 auto_assign_roles <- function(dir_path) {
   files <- list.files(dir_path, pattern = "\\.(safetensors|gguf|ckpt)$",
@@ -234,15 +262,18 @@ ui <- fluidPage(
                                style = "margin-top: 25px; width: 100%;"))
       ),
 
-      # Auto-assigned dropdowns
-      selectInput("sel_model", "Model", choices = NULL),
-      selectInput("sel_vae", "VAE (optional)", choices = NULL),
+      # Auto-assigned dropdowns — visibility depends on architecture
+      conditionalPanel(
+        condition = "input.model_type != 'flux' && input.model_type != 'sd3'",
+        selectInput("sel_model", "Model", choices = NULL)
+      ),
       conditionalPanel(
         condition = "input.model_type == 'flux' || input.model_type == 'sd3'",
         selectInput("sel_diffusion", "Diffusion model", choices = NULL),
         selectInput("sel_clip_l", "CLIP-L (optional)", choices = NULL),
         selectInput("sel_t5xxl", "T5-XXL (optional)", choices = NULL)
       ),
+      selectInput("sel_vae", "VAE (optional)", choices = NULL),
 
       actionButton("load_model", "Load Model", class = "btn-primary btn-block",
                     style = "width: 100%; margin-bottom: 15px;"),
@@ -267,6 +298,12 @@ ui <- fluidPage(
         column(4, numericInput("steps", "Steps", 20, min = 1, max = 100)),
         column(4, numericInput("cfg", "CFG", 7.0, min = 0, max = 30, step = 0.5)),
         column(4, numericInput("seed", "Seed", 42, min = -1))
+      ),
+      fluidRow(
+        column(12,
+          checkboxInput("live_preview", "Live preview (fast latent projection)",
+                        value = TRUE)
+        )
       ),
 
       hr(),
@@ -346,19 +383,19 @@ server <- function(input, output, session) {
     }
 
     none <- c("(none)" = "")
-    choices     <- setNames(all_files, all_files)
-    choices_opt <- c(none, choices)
+    by_role <- classify_files(all_files)
+    mk <- function(v) c(none, setNames(v, v))
 
     roles <- auto_assign_roles(dir_path)
 
     # Auto-switch architecture based on detected files
     updateSelectInput(session, "model_type", selected = roles$arch)
 
-    updateSelectInput(session, "sel_model",     choices = choices_opt, selected = roles$model)
-    updateSelectInput(session, "sel_diffusion", choices = choices_opt, selected = roles$diffusion)
-    updateSelectInput(session, "sel_vae",       choices = choices_opt, selected = roles$vae)
-    updateSelectInput(session, "sel_clip_l",    choices = choices_opt, selected = roles$clip_l)
-    updateSelectInput(session, "sel_t5xxl",     choices = choices_opt, selected = roles$t5xxl)
+    updateSelectInput(session, "sel_model",     choices = mk(by_role$main),      selected = roles$model)
+    updateSelectInput(session, "sel_diffusion", choices = mk(by_role$diffusion), selected = roles$diffusion)
+    updateSelectInput(session, "sel_vae",       choices = mk(by_role$vae),       selected = roles$vae)
+    updateSelectInput(session, "sel_clip_l",    choices = mk(by_role$clip_l),    selected = roles$clip_l)
+    updateSelectInput(session, "sel_t5xxl",     choices = mk(by_role$t5xxl),     selected = roles$t5xxl)
 
     showNotification(sprintf("Found %d files, detected: %s",
                              length(all_files), toupper(roles$arch)),
@@ -399,6 +436,16 @@ server <- function(input, output, session) {
     updateSelectInput(session, "scheduler", selected = p$scheduler)
     updateNumericInput(session, "steps", value = p$steps)
     updateNumericInput(session, "cfg", value = p$cfg)
+
+    # Clear stale role selections from the other branch to avoid sending
+    # incompatible path combinations to sd.cpp
+    if (input$model_type %in% c("flux", "sd3")) {
+      updateSelectInput(session, "sel_model", selected = "")
+    } else {
+      updateSelectInput(session, "sel_diffusion", selected = "")
+      updateSelectInput(session, "sel_clip_l",    selected = "")
+      updateSelectInput(session, "sel_t5xxl",     selected = "")
+    }
   })
 
   # Char counter
@@ -412,6 +459,10 @@ server <- function(input, output, session) {
 
   # --- Progress file for async generation ---
   progress_file <- tempfile("sd_progress_", fileext = ".json")
+
+  # --- Live preview file (single PPM, updated atomically by the C callback) ---
+  preview_file <- tempfile("sd_preview_", fileext = ".ppm")
+  preview_active <- FALSE  # whether preview is wired up for the current run
 
   # Read progress from temp file written by C++ callback
   read_progress <- function() {
@@ -608,6 +659,15 @@ server <- function(input, output, session) {
       batch_count = 1L
     )
 
+    # Live preview: write the latest in-progress frame to preview_file. proj
+    # mode is cheap and needs no VAE/taesd, so it is always safe to enable.
+    preview_active <<- isTRUE(input$live_preview)
+    if (preview_active) {
+      if (file.exists(preview_file)) unlink(preview_file)
+      local_state$preview_image <- NULL
+      sd2R::sd_preview_start(preview_file, mode = sd2R::PREVIEW$PROJ, interval = 1L)
+    }
+
     # Launch async generation in C++ thread
     tryCatch({
       sd2R:::sd_generate_async(local_state$ctx, gen_params)
@@ -616,6 +676,7 @@ server <- function(input, output, session) {
       rv$generating <- FALSE
       rv$status_msg <- paste("Error:", e$message)
       sd2R:::sd_clear_progress_file()
+      if (preview_active) { sd2R::sd_preview_stop(); preview_active <<- FALSE }
     })
   })
 
@@ -625,10 +686,21 @@ server <- function(input, output, session) {
       status <- sd2R:::sd_generate_poll()
       rv$progress_trigger <- Sys.time()
 
+      # Pull the latest preview frame (if enabled) so the result pane shows the
+      # image taking shape. sd_read_preview() returns NULL until a frame exists.
+      if (preview_active) {
+        pv <- tryCatch(sd2R::sd_read_preview(preview_file), error = function(e) NULL)
+        if (!is.null(pv)) {
+          local_state$preview_image <- pv
+          rv$image_trigger <- Sys.time()
+        }
+      }
+
       if (status$done) {
         tryCatch({
           imgs <- sd2R:::sd_generate_result()
           local_state$last_image <- imgs[[1]]
+          local_state$preview_image <- NULL  # final replaces preview
           rv$image_trigger <- Sys.time()
           p <- read_progress()
           elapsed <- if (!is.null(p)) round(p$elapsed, 1) else "?"
@@ -640,16 +712,22 @@ server <- function(input, output, session) {
         })
         rv$generating <- FALSE
         sd2R:::sd_clear_progress_file()
+        if (preview_active) { sd2R::sd_preview_stop(); preview_active <<- FALSE }
       } else {
         poll_generation()
       }
     }, delay = 0.5)
   }
 
-  # Display result
+  # Display result. While generating with live preview on, show the latest
+  # preview frame (small latent-projection image, scaled up with pixelation so
+  # it reads as a draft); once done, the final image replaces it.
   output$result_image <- renderUI({
     rv$image_trigger  # reactive dependency to re-render on new image
-    img <- local_state$last_image
+    final <- local_state$last_image
+    showing_preview <- rv$generating && !is.null(local_state$preview_image)
+    img <- if (showing_preview) local_state$preview_image else final
+
     if (is.null(img)) {
       div(style = "color:#555; padding: 100px 0; font-size: 1.3em;",
           "Generated image will appear here")
@@ -657,8 +735,18 @@ server <- function(input, output, session) {
       tmp <- tempfile(fileext = ".png")
       sd2R::sd_save_image(img, tmp)
       b64 <- base64enc::base64encode(tmp)
-      tags$img(src = paste0("data:image/png;base64,", b64),
-               style = "max-width: 100%;")
+      style <- "max-width: 100%;"
+      if (showing_preview) {
+        # nearest-neighbour upscale so a 32x32 draft fills the pane crisply
+        style <- paste0(style, " image-rendering: pixelated; width: 100%;",
+                        " opacity: 0.92;")
+      }
+      tagList(
+        tags$img(src = paste0("data:image/png;base64,", b64), style = style),
+        if (showing_preview)
+          div(style = "color:#e94560; font-size:0.85em; margin-top:4px;",
+              "live preview…")
+      )
     }
   })
 

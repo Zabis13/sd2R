@@ -30,16 +30,16 @@ BEGIN_RCPP
 END_RCPP
 }
 // sd_set_preview_dump
-void sd_set_preview_dump(std::string prefix, std::string mode, int interval, bool denoised, bool noisy);
-RcppExport SEXP _sd2R_sd_set_preview_dump(SEXP prefixSEXP, SEXP modeSEXP, SEXP intervalSEXP, SEXP denoisedSEXP, SEXP noisySEXP) {
+void sd_set_preview_dump(std::string path, std::string mode, int interval, bool denoised, bool noisy);
+RcppExport SEXP _sd2R_sd_set_preview_dump(SEXP pathSEXP, SEXP modeSEXP, SEXP intervalSEXP, SEXP denoisedSEXP, SEXP noisySEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< std::string >::type prefix(prefixSEXP);
+    Rcpp::traits::input_parameter< std::string >::type path(pathSEXP);
     Rcpp::traits::input_parameter< std::string >::type mode(modeSEXP);
     Rcpp::traits::input_parameter< int >::type interval(intervalSEXP);
     Rcpp::traits::input_parameter< bool >::type denoised(denoisedSEXP);
     Rcpp::traits::input_parameter< bool >::type noisy(noisySEXP);
-    sd_set_preview_dump(prefix, mode, interval, denoised, noisy);
+    sd_set_preview_dump(path, mode, interval, denoised, noisy);
     return R_NilValue;
 END_RCPP
 }
@@ -167,6 +167,170 @@ BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     rcpp_result_gen = Rcpp::wrap(sd_create_context_result());
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_ctx_version_cpp
+int sd_ctx_version_cpp(SEXP ctx_sexp);
+RcppExport SEXP _sd2R_sd_ctx_version_cpp(SEXP ctx_sexpSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_ctx_version_cpp(ctx_sexp));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_ctx_supports_ref_cpp
+bool sd_ctx_supports_ref_cpp(SEXP ctx_sexp);
+RcppExport SEXP _sd2R_sd_ctx_supports_ref_cpp(SEXP ctx_sexpSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_ctx_supports_ref_cpp(ctx_sexp));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_encode_text_cpp
+SEXP sd_encode_text_cpp(SEXP ctx_sexp, std::string prompt, int clip_skip, int width, int height);
+RcppExport SEXP _sd2R_sd_encode_text_cpp(SEXP ctx_sexpSEXP, SEXP promptSEXP, SEXP clip_skipSEXP, SEXP widthSEXP, SEXP heightSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    Rcpp::traits::input_parameter< std::string >::type prompt(promptSEXP);
+    Rcpp::traits::input_parameter< int >::type clip_skip(clip_skipSEXP);
+    Rcpp::traits::input_parameter< int >::type width(widthSEXP);
+    Rcpp::traits::input_parameter< int >::type height(heightSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_encode_text_cpp(ctx_sexp, prompt, clip_skip, width, height));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_encode_image_cpp
+SEXP sd_encode_image_cpp(SEXP ctx_sexp, Rcpp::List image);
+RcppExport SEXP _sd2R_sd_encode_image_cpp(SEXP ctx_sexpSEXP, SEXP imageSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type image(imageSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_encode_image_cpp(ctx_sexp, image));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_decode_latent_cpp
+Rcpp::List sd_decode_latent_cpp(SEXP ctx_sexp, SEXP latent);
+RcppExport SEXP _sd2R_sd_decode_latent_cpp(SEXP ctx_sexpSEXP, SEXP latentSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type latent(latentSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_decode_latent_cpp(ctx_sexp, latent));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_sample_cpp
+SEXP sd_sample_cpp(SEXP ctx_sexp, SEXP init_latent, SEXP noise, Rcpp::List cond, Rcpp::List uncond, int sample_method, int scheduler, int sample_steps, double cfg_scale, double eta, double strength, Rcpp::Nullable<Rcpp::NumericVector> custom_sigmas);
+RcppExport SEXP _sd2R_sd_sample_cpp(SEXP ctx_sexpSEXP, SEXP init_latentSEXP, SEXP noiseSEXP, SEXP condSEXP, SEXP uncondSEXP, SEXP sample_methodSEXP, SEXP schedulerSEXP, SEXP sample_stepsSEXP, SEXP cfg_scaleSEXP, SEXP etaSEXP, SEXP strengthSEXP, SEXP custom_sigmasSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type init_latent(init_latentSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type noise(noiseSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type cond(condSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type uncond(uncondSEXP);
+    Rcpp::traits::input_parameter< int >::type sample_method(sample_methodSEXP);
+    Rcpp::traits::input_parameter< int >::type scheduler(schedulerSEXP);
+    Rcpp::traits::input_parameter< int >::type sample_steps(sample_stepsSEXP);
+    Rcpp::traits::input_parameter< double >::type cfg_scale(cfg_scaleSEXP);
+    Rcpp::traits::input_parameter< double >::type eta(etaSEXP);
+    Rcpp::traits::input_parameter< double >::type strength(strengthSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericVector> >::type custom_sigmas(custom_sigmasSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_sample_cpp(ctx_sexp, init_latent, noise, cond, uncond, sample_method, scheduler, sample_steps, cfg_scale, eta, strength, custom_sigmas));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_sampler_sigmas_cpp
+Rcpp::NumericVector sd_sampler_sigmas_cpp(SEXP ctx_sexp, int scheduler, int sample_method, int sample_steps, int width, int height);
+RcppExport SEXP _sd2R_sd_sampler_sigmas_cpp(SEXP ctx_sexpSEXP, SEXP schedulerSEXP, SEXP sample_methodSEXP, SEXP sample_stepsSEXP, SEXP widthSEXP, SEXP heightSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    Rcpp::traits::input_parameter< int >::type scheduler(schedulerSEXP);
+    Rcpp::traits::input_parameter< int >::type sample_method(sample_methodSEXP);
+    Rcpp::traits::input_parameter< int >::type sample_steps(sample_stepsSEXP);
+    Rcpp::traits::input_parameter< int >::type width(widthSEXP);
+    Rcpp::traits::input_parameter< int >::type height(heightSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_sampler_sigmas_cpp(ctx_sexp, scheduler, sample_method, sample_steps, width, height));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_sampler_begin_cpp
+void sd_sampler_begin_cpp(SEXP ctx_sexp);
+RcppExport SEXP _sd2R_sd_sampler_begin_cpp(SEXP ctx_sexpSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    sd_sampler_begin_cpp(ctx_sexp);
+    return R_NilValue;
+END_RCPP
+}
+// sd_sampler_end_cpp
+void sd_sampler_end_cpp(SEXP ctx_sexp);
+RcppExport SEXP _sd2R_sd_sampler_end_cpp(SEXP ctx_sexpSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    sd_sampler_end_cpp(ctx_sexp);
+    return R_NilValue;
+END_RCPP
+}
+// sd_noise_scale_cpp
+SEXP sd_noise_scale_cpp(SEXP ctx_sexp, SEXP init_latent, SEXP noise, double sigma0);
+RcppExport SEXP _sd2R_sd_noise_scale_cpp(SEXP ctx_sexpSEXP, SEXP init_latentSEXP, SEXP noiseSEXP, SEXP sigma0SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type init_latent(init_latentSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type noise(noiseSEXP);
+    Rcpp::traits::input_parameter< double >::type sigma0(sigma0SEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_noise_scale_cpp(ctx_sexp, init_latent, noise, sigma0));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_inverse_noise_scale_cpp
+SEXP sd_inverse_noise_scale_cpp(SEXP ctx_sexp, SEXP x_in, double sigma_last);
+RcppExport SEXP _sd2R_sd_inverse_noise_scale_cpp(SEXP ctx_sexpSEXP, SEXP x_inSEXP, SEXP sigma_lastSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type x_in(x_inSEXP);
+    Rcpp::traits::input_parameter< double >::type sigma_last(sigma_lastSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_inverse_noise_scale_cpp(ctx_sexp, x_in, sigma_last));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_denoise_step_cpp
+SEXP sd_denoise_step_cpp(SEXP ctx_sexp, SEXP x_in, double sigma, Rcpp::List cond, Rcpp::List uncond, double cfg_scale, int step, int total_steps);
+RcppExport SEXP _sd2R_sd_denoise_step_cpp(SEXP ctx_sexpSEXP, SEXP x_inSEXP, SEXP sigmaSEXP, SEXP condSEXP, SEXP uncondSEXP, SEXP cfg_scaleSEXP, SEXP stepSEXP, SEXP total_stepsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type x_in(x_inSEXP);
+    Rcpp::traits::input_parameter< double >::type sigma(sigmaSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type cond(condSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type uncond(uncondSEXP);
+    Rcpp::traits::input_parameter< double >::type cfg_scale(cfg_scaleSEXP);
+    Rcpp::traits::input_parameter< int >::type step(stepSEXP);
+    Rcpp::traits::input_parameter< int >::type total_steps(total_stepsSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_denoise_step_cpp(ctx_sexp, x_in, sigma, cond, uncond, cfg_scale, step, total_steps));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -339,6 +503,18 @@ static const R_CallMethodDef CallEntries[] = {
     {"_sd2R_sd_create_context_async", (DL_FUNC) &_sd2R_sd_create_context_async, 1},
     {"_sd2R_sd_create_context_poll", (DL_FUNC) &_sd2R_sd_create_context_poll, 0},
     {"_sd2R_sd_create_context_result", (DL_FUNC) &_sd2R_sd_create_context_result, 0},
+    {"_sd2R_sd_ctx_version_cpp", (DL_FUNC) &_sd2R_sd_ctx_version_cpp, 1},
+    {"_sd2R_sd_ctx_supports_ref_cpp", (DL_FUNC) &_sd2R_sd_ctx_supports_ref_cpp, 1},
+    {"_sd2R_sd_encode_text_cpp", (DL_FUNC) &_sd2R_sd_encode_text_cpp, 5},
+    {"_sd2R_sd_encode_image_cpp", (DL_FUNC) &_sd2R_sd_encode_image_cpp, 2},
+    {"_sd2R_sd_decode_latent_cpp", (DL_FUNC) &_sd2R_sd_decode_latent_cpp, 2},
+    {"_sd2R_sd_sample_cpp", (DL_FUNC) &_sd2R_sd_sample_cpp, 12},
+    {"_sd2R_sd_sampler_sigmas_cpp", (DL_FUNC) &_sd2R_sd_sampler_sigmas_cpp, 6},
+    {"_sd2R_sd_sampler_begin_cpp", (DL_FUNC) &_sd2R_sd_sampler_begin_cpp, 1},
+    {"_sd2R_sd_sampler_end_cpp", (DL_FUNC) &_sd2R_sd_sampler_end_cpp, 1},
+    {"_sd2R_sd_noise_scale_cpp", (DL_FUNC) &_sd2R_sd_noise_scale_cpp, 4},
+    {"_sd2R_sd_inverse_noise_scale_cpp", (DL_FUNC) &_sd2R_sd_inverse_noise_scale_cpp, 3},
+    {"_sd2R_sd_denoise_step_cpp", (DL_FUNC) &_sd2R_sd_denoise_step_cpp, 8},
     {"_sd2R_sd_generate_image", (DL_FUNC) &_sd2R_sd_generate_image, 2},
     {"_sd2R_sd_system_info_cpp", (DL_FUNC) &_sd2R_sd_system_info_cpp, 0},
     {"_sd2R_sd_version_cpp", (DL_FUNC) &_sd2R_sd_version_cpp, 0},

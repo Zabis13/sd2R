@@ -379,6 +379,134 @@ SD_API void sd_img_gen_params_init(sd_img_gen_params_t* sd_img_gen_params);
 SD_API char* sd_img_gen_params_to_str(const sd_img_gen_params_t* sd_img_gen_params);
 SD_API sd_image_t* generate_image(sd_ctx_t* sd_ctx, const sd_img_gen_params_t* sd_img_gen_params);
 
+// ===========================================================================
+// sd2R low-level pipeline API (TODO 9.2) — explicit per-step entry points.
+// Design: dev/9.2-low-level-pipeline-design.md (Variant B ownership).
+//
+// These expose the steps that generate_image() runs internally (text/image
+// encode, sampling loop, latent decode) as standalone C-ABI calls so that R
+// can build graph/modular pipelines (TODO 7) and multiref (TODO 9.7).
+//
+// Ownership (Variant B): each call uses a private ggml work arena internally
+// and copies its result into RAM-owned buffers. The returned sd_tensor /
+// sd_cond own their `data` and MUST be released with sd_tensor_free() /
+// sd_cond_free(). This makes the steps reentrant (sd2R runs async generation
+// in std::thread) and serialisable, at the cost of small GPU<->RAM copies.
+// ===========================================================================
+
+// A single dense tensor living in host RAM. ne[] is fixed at 4 dims for ABI
+// stability (independent of GGML_MAX_DIMS). `data` is owned (malloc'd) unless
+// data == NULL, which denotes an absent/empty tensor.
+typedef struct {
+    enum sd_type_t type;  // element type (typically SD_TYPE_F32)
+    int64_t        ne[4]; // dimensions, ne[0] = fastest-varying
+    void*          data;  // owned host buffer, or NULL if empty
+    size_t         nbytes;
+} sd_tensor;
+
+// The conditioning produced by text encoding (mirrors SDCondition): up to
+// three tensors. Any of them may be empty (data == NULL) depending on the
+// model. crossattn = context, vector = pooled/y, concat = c_concat.
+typedef struct {
+    sd_tensor crossattn;
+    sd_tensor vector;
+    sd_tensor concat;
+} sd_cond;
+
+// Encode a text prompt into conditioning. clip_skip < 0 = model default.
+// width/height influence size-conditioning for some models (e.g. SDXL); pass
+// the intended generation size, or -1 to let the model decide.
+SD_API sd_cond sd_encode_text(sd_ctx_t* sd_ctx, const char* prompt, int clip_skip, int width, int height);
+
+// Encode a pixel image into a latent (VAE encode). Requires a context built
+// with vae_decode_only = false.
+SD_API sd_tensor sd_encode_image(sd_ctx_t* sd_ctx, sd_image_t image);
+
+// Decode a latent back into a pixel image (VAE decode). The returned
+// sd_image_t.data is owned (free with free()).
+SD_API sd_image_t sd_decode_latent(sd_ctx_t* sd_ctx, sd_tensor latent);
+
+// Run the full sampling loop. `noise` is supplied explicitly for determinism
+// (callers seed it themselves). `init_latent` may be empty (data == NULL) for
+// pure txt2img; when present, `strength` controls the img2img start step.
+// sample_params carries guidance (cfg), scheduler, method, steps, eta, sigmas.
+// Returns the denoised latent x_0.
+SD_API sd_tensor sd_sample(sd_ctx_t* sd_ctx,
+                           sd_tensor init_latent,
+                           sd_tensor noise,
+                           sd_cond cond,
+                           sd_cond uncond,
+                           const sd_sample_params_t* sample_params,
+                           float strength);
+
+SD_API void sd_tensor_free(sd_tensor* t);
+SD_API void sd_cond_free(sd_cond* c);
+
+// ---------------------------------------------------------------------------
+// Step-wise sampling (TODO 9.2 Stage 2). Exposes one denoise step so the
+// sampler loop can live in R (per-step preview / interruption). Supports the
+// Euler family without caches/tiled/control/skip-layers; for everything else
+// use sd_sample (the whole loop). See dev/9.2-stage2-design.md.
+// ---------------------------------------------------------------------------
+
+// Sigma schedule for (scheduler, sample_steps) at the given latent size, as
+// used by the sampler loop. width/height are in PIXEL space (the same values
+// passed to generation). Returns a freshly malloc'd array of length
+// (sample_steps + 1); the trailing sigma is 0. Free with sd_floats_free.
+// *out_len receives the length. Returns NULL on error.
+SD_API float* sd_sampler_sigmas(sd_ctx_t* sd_ctx,
+                                enum scheduler_t scheduler,
+                                enum sample_method_t sample_method,
+                                int sample_steps,
+                                int width,
+                                int height,
+                                int* out_len);
+SD_API void sd_floats_free(float* p);
+
+// Open / close a step-wise sampling window. Between begin and end the
+// diffusion model keeps its compute buffer alive across sd_denoise_step calls
+// (begin/end_batch_compute), avoiding a ~100 MB GPU buffer realloc per step.
+// Must be paired; sd_sampler_end frees the buffer. Not reentrant per ctx.
+SD_API void sd_sampler_begin(sd_ctx_t* sd_ctx);
+SD_API void sd_sampler_end(sd_ctx_t* sd_ctx);
+
+// Scale `noise` into the starting latent for the first sigma
+// (denoiser->noise_scaling). `init_latent` may be empty (txt2img: treated as
+// zeros shaped like noise). Returns the scaled latent x. Call once before the
+// loop. Geometry comes from `noise`.
+SD_API sd_tensor sd_noise_scale(sd_ctx_t* sd_ctx,
+                                sd_tensor init_latent,
+                                sd_tensor noise,
+                                float sigma0);
+
+// Undo any final-step latent scaling (denoiser->inverse_noise_scaling) after
+// the last step. A no-op for discrete CompVis denoisers. Returns the result.
+SD_API sd_tensor sd_inverse_noise_scale(sd_ctx_t* sd_ctx,
+                                        sd_tensor x,
+                                        float sigma_last);
+
+// One denoise step: runs the diffusion model on `x` at `sigma` and returns the
+// denoised x_0 estimate (NOT the next x — the Euler update is done by the
+// caller). `uncond` empty (data == NULL) disables CFG. step/total_steps are
+// 1-based and used only for the progress/preview hooks. Must be called inside
+// a sd_sampler_begin/end window. Returns an empty tensor on error.
+SD_API sd_tensor sd_denoise_step(sd_ctx_t* sd_ctx,
+                                 sd_tensor x,
+                                 float sigma,
+                                 sd_cond cond,
+                                 sd_cond uncond,
+                                 float cfg_scale,
+                                 int step,
+                                 int total_steps);
+
+// Model capability queries (used by R to validate calls before they reach
+// ggml, which aborts the process on unsupported configurations).
+// Returns the raw SDVersion enum value of the loaded model, or -1 if unknown.
+SD_API int sd_ctx_get_version(const sd_ctx_t* sd_ctx);
+// True when the loaded model consumes reference images (edit / control /
+// Qwen-Image / FLUX.2 families). Passing refs to other models aborts in ggml.
+SD_API bool sd_ctx_supports_ref_images(const sd_ctx_t* sd_ctx);
+
 SD_API void sd_vid_gen_params_init(sd_vid_gen_params_t* sd_vid_gen_params);
 SD_API sd_image_t* generate_video(sd_ctx_t* sd_ctx, const sd_vid_gen_params_t* sd_vid_gen_params, int* num_frames_out);
 

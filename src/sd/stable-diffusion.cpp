@@ -2517,6 +2517,82 @@ public:
         return x;
     }
 
+    // Single denoise step for the step-wise (Stage 2) API: runs the diffusion
+    // model on `input` at `sigma` and writes the denoised x_0 estimate into
+    // `denoised`. This is a compact reimplementation of the basic branch of the
+    // sample() denoise lambda (no caches / tiled / control / skip-layers /
+    // img_cond / shifted_timestep), matching its formulas and op order so the
+    // R-side Euler loop is bit-exact with sample(). The caller manages
+    // begin/end_batch_compute and the work arena.
+    bool denoise_once(ggml_context* work_ctx,
+                      ggml_tensor* input,
+                      float sigma,
+                      const SDCondition& cond,
+                      const SDCondition& uncond,
+                      float cfg_scale,
+                      ggml_tensor* denoised) {
+        bool has_unconditioned = cfg_scale != 1.0f && uncond.c_crossattn != nullptr;
+
+        struct ggml_tensor* noised_input = ggml_dup_tensor(work_ctx, input);
+        struct ggml_tensor* out_cond     = ggml_dup_tensor(work_ctx, input);
+        struct ggml_tensor* out_uncond   = has_unconditioned ? ggml_dup_tensor(work_ctx, input) : nullptr;
+
+        std::vector<float> scaling = denoiser->get_scalings(sigma);
+        GGML_ASSERT(scaling.size() == 3);
+        float c_skip = scaling[0];
+        float c_out  = scaling[1];
+        float c_in   = scaling[2];
+
+        float t = denoiser->sigma_to_t(sigma);
+        std::vector<float> timesteps_vec(1, t);
+        auto timesteps = vector_to_ggml_tensor(work_ctx, timesteps_vec);
+        std::vector<float> guidance_vec(1, 0.f);
+        auto guidance_tensor = vector_to_ggml_tensor(work_ctx, guidance_vec);
+
+        // noised_input = input * c_in
+        copy_ggml_tensor(noised_input, input);
+        ggml_ext_tensor_scale_inplace(noised_input, c_in);
+
+        DiffusionParams diffusion_params;
+        diffusion_params.x         = noised_input;
+        diffusion_params.timesteps = timesteps;
+        diffusion_params.guidance  = guidance_tensor;
+
+        // cond
+        diffusion_params.context  = cond.c_crossattn;
+        diffusion_params.c_concat = cond.c_concat;
+        diffusion_params.y        = cond.c_vector;
+        if (!diffusion_model->compute(n_threads, diffusion_params, &out_cond)) {
+            LOG_ERROR("denoise_once: diffusion model compute (cond) failed");
+            return false;
+        }
+
+        float* negative_data = nullptr;
+        if (has_unconditioned) {
+            diffusion_params.context  = uncond.c_crossattn;
+            diffusion_params.c_concat = uncond.c_concat;
+            diffusion_params.y        = uncond.c_vector;
+            if (!diffusion_model->compute(n_threads, diffusion_params, &out_uncond)) {
+                LOG_ERROR("denoise_once: diffusion model compute (uncond) failed");
+                return false;
+            }
+            negative_data = (float*)out_uncond->data;
+        }
+
+        float* vec_denoised  = (float*)denoised->data;
+        float* vec_input     = (float*)input->data;
+        float* positive_data = (float*)out_cond->data;
+        int ne_elements      = (int)ggml_nelements(denoised);
+        for (int i = 0; i < ne_elements; i++) {
+            float latent_result = positive_data[i];
+            if (has_unconditioned) {
+                latent_result = negative_data[i] + cfg_scale * (positive_data[i] - negative_data[i]);
+            }
+            vec_denoised[i] = latent_result * c_out + vec_input[i] * c_skip;
+        }
+        return true;
+    }
+
     int get_vae_scale_factor() {
         int vae_scale_factor = 8;
         if (version == VERSION_WAN2_2_TI2V) {
@@ -3737,6 +3813,447 @@ sd_image_t* generate_image_internal(sd_ctx_t* sd_ctx,
     ggml_free(work_ctx);
 
     return result_images;
+}
+
+// ===========================================================================
+// sd2R low-level pipeline API (TODO 9.2). See stable-diffusion.h and
+// dev/9.2-low-level-pipeline-design.md. Variant B: each call owns a private
+// work arena and copies results into RAM-owned sd_tensor / sd_cond.
+// ===========================================================================
+
+// --- conversion helpers (file-local) --------------------------------------
+
+static sd_tensor sd_tensor_empty() {
+    sd_tensor t;
+    t.type   = SD_TYPE_F32;
+    t.ne[0] = t.ne[1] = t.ne[2] = t.ne[3] = 0;
+    t.data   = nullptr;
+    t.nbytes = 0;
+    return t;
+}
+
+// Copy a ggml_tensor (in a work arena) into a freshly malloc'd sd_tensor.
+// Returns an empty sd_tensor when `g` is null.
+static sd_tensor ggml_to_sd_tensor(const struct ggml_tensor* g) {
+    if (g == nullptr) {
+        return sd_tensor_empty();
+    }
+    sd_tensor t;
+    t.type   = (enum sd_type_t)g->type;
+    t.ne[0]  = g->ne[0];
+    t.ne[1]  = g->ne[1];
+    t.ne[2]  = g->ne[2];
+    t.ne[3]  = g->ne[3];
+    t.nbytes = ggml_nbytes(g);
+    t.data   = malloc(t.nbytes);
+    if (t.data != nullptr) {
+        memcpy(t.data, g->data, t.nbytes);
+    } else {
+        t.nbytes = 0;
+    }
+    return t;
+}
+
+// Materialise an sd_tensor back into a ggml_tensor inside `ctx`.
+// Returns nullptr for an empty sd_tensor.
+static struct ggml_tensor* sd_tensor_to_ggml(struct ggml_context* ctx, const sd_tensor* t) {
+    if (t == nullptr || t->data == nullptr) {
+        return nullptr;
+    }
+    struct ggml_tensor* g = ggml_new_tensor_4d(ctx, (enum ggml_type)t->type,
+                                               t->ne[0], t->ne[1], t->ne[2], t->ne[3]);
+    memcpy(g->data, t->data, std::min(t->nbytes, ggml_nbytes(g)));
+    return g;
+}
+
+static struct ggml_context* sd_lowlevel_work_ctx(size_t mem_size) {
+    struct ggml_init_params params;
+    params.mem_size   = mem_size;
+    params.mem_buffer = nullptr;
+    params.no_alloc   = false;
+    return ggml_init(params);
+}
+
+// --- public C-ABI steps ----------------------------------------------------
+
+sd_cond sd_encode_text(sd_ctx_t* sd_ctx, const char* prompt, int clip_skip, int width, int height) {
+    sd_cond out;
+    out.crossattn = sd_tensor_empty();
+    out.vector    = sd_tensor_empty();
+    out.concat    = sd_tensor_empty();
+    if (sd_ctx == nullptr || sd_ctx->sd == nullptr || prompt == nullptr ||
+        sd_ctx->sd->cond_stage_model == nullptr) {
+        return out;
+    }
+
+    // Text encoding allocates relatively little; a 256 MB arena is ample for
+    // CLIP/T5 conditioning tensors.
+    struct ggml_context* work_ctx = sd_lowlevel_work_ctx(static_cast<size_t>(256) * 1024 * 1024);
+    if (work_ctx == nullptr) {
+        LOG_ERROR("sd_encode_text: ggml_init() failed");
+        return out;
+    }
+
+    ConditionerParams cp;
+    cp.text      = std::string(prompt);
+    cp.clip_skip = clip_skip;
+    cp.width     = width;
+    cp.height    = height;
+    cp.adm_in_channels = static_cast<int>(sd_ctx->sd->diffusion_model->get_adm_in_channels());
+
+    SDCondition c = sd_ctx->sd->cond_stage_model->get_learned_condition(work_ctx,
+                                                                        sd_ctx->sd->n_threads,
+                                                                        cp);
+    out.crossattn = ggml_to_sd_tensor(c.c_crossattn);
+    out.vector    = ggml_to_sd_tensor(c.c_vector);
+    out.concat    = ggml_to_sd_tensor(c.c_concat);
+
+    ggml_free(work_ctx);
+    return out;
+}
+
+sd_image_t sd_decode_latent(sd_ctx_t* sd_ctx, sd_tensor latent) {
+    sd_image_t out;
+    out.width = out.height = out.channel = 0;
+    out.data  = nullptr;
+    if (sd_ctx == nullptr || sd_ctx->sd == nullptr || latent.data == nullptr) {
+        return out;
+    }
+
+    // 1 GB arena, same as generate_image's decode path.
+    struct ggml_context* work_ctx = sd_lowlevel_work_ctx(static_cast<size_t>(1024) * 1024 * 1024);
+    if (work_ctx == nullptr) {
+        LOG_ERROR("sd_decode_latent: ggml_init() failed");
+        return out;
+    }
+
+    struct ggml_tensor* lat = sd_tensor_to_ggml(work_ctx, &latent);
+    struct ggml_tensor* img = sd_ctx->sd->decode_first_stage(work_ctx, lat);
+    if (img != nullptr) {
+        out.width   = static_cast<uint32_t>(img->ne[0]);
+        out.height  = static_cast<uint32_t>(img->ne[1]);
+        out.channel = 3;
+        out.data    = ggml_tensor_to_sd_image(img);
+    }
+
+    ggml_free(work_ctx);
+    return out;
+}
+
+sd_tensor sd_encode_image(sd_ctx_t* sd_ctx, sd_image_t image) {
+    if (sd_ctx == nullptr || sd_ctx->sd == nullptr || image.data == nullptr) {
+        return sd_tensor_empty();
+    }
+
+    struct ggml_context* work_ctx = sd_lowlevel_work_ctx(static_cast<size_t>(1024) * 1024 * 1024);
+    if (work_ctx == nullptr) {
+        LOG_ERROR("sd_encode_image: ggml_init() failed");
+        return sd_tensor_empty();
+    }
+
+    struct ggml_tensor* img = ggml_new_tensor_4d(work_ctx, GGML_TYPE_F32,
+                                                 image.width, image.height, 3, 1);
+    sd_image_to_ggml_tensor(image, img);
+    struct ggml_tensor* latent = sd_ctx->sd->encode_first_stage(work_ctx, img);
+    sd_tensor out              = ggml_to_sd_tensor(latent);
+
+    ggml_free(work_ctx);
+    return out;
+}
+
+sd_tensor sd_sample(sd_ctx_t* sd_ctx,
+                    sd_tensor init_latent,
+                    sd_tensor noise,
+                    sd_cond cond,
+                    sd_cond uncond,
+                    const sd_sample_params_t* sample_params,
+                    float strength) {
+    if (sd_ctx == nullptr || sd_ctx->sd == nullptr ||
+        sample_params == nullptr || noise.data == nullptr) {
+        return sd_tensor_empty();
+    }
+
+    struct ggml_context* work_ctx = sd_lowlevel_work_ctx(static_cast<size_t>(1024) * 1024 * 1024);
+    if (work_ctx == nullptr) {
+        LOG_ERROR("sd_sample: ggml_init() failed");
+        return sd_tensor_empty();
+    }
+
+    // Latent geometry comes from the noise tensor (W, H, C in latent space).
+    struct ggml_tensor* noise_t = sd_tensor_to_ggml(work_ctx, &noise);
+    struct ggml_tensor* x_t     = sd_tensor_to_ggml(work_ctx, &init_latent);
+    // sample() dereferences init_latent unconditionally (ggml_dup_tensor +
+    // copy). For txt2img the caller passes an empty init_latent; mirror
+    // generate_image_internal by starting from a zero latent shaped like noise.
+    bool is_img2img = (x_t != nullptr);
+    if (x_t == nullptr) {
+        x_t = ggml_dup_tensor(work_ctx, noise_t);
+        ggml_set_f32(x_t, 0.0f);
+    }
+    int W = static_cast<int>(noise_t->ne[0]);
+    int H = static_cast<int>(noise_t->ne[1]);
+
+    SDCondition c(sd_tensor_to_ggml(work_ctx, &cond.crossattn),
+                  sd_tensor_to_ggml(work_ctx, &cond.vector),
+                  sd_tensor_to_ggml(work_ctx, &cond.concat));
+    SDCondition uc(sd_tensor_to_ggml(work_ctx, &uncond.crossattn),
+                   sd_tensor_to_ggml(work_ctx, &uncond.vector),
+                   sd_tensor_to_ggml(work_ctx, &uncond.concat));
+    SDCondition img_cond;
+
+    // Build sigmas (mirrors generate_image): custom sigmas or scheduler.
+    enum sample_method_t sample_method = sample_params->sample_method;
+    if (sample_method == SAMPLE_METHOD_COUNT) {
+        sample_method = sd_get_default_sample_method(sd_ctx);
+    }
+    int sample_steps = sample_params->sample_steps;
+    std::vector<float> sigmas;
+    if (sample_params->custom_sigmas_count > 0) {
+        sigmas = std::vector<float>(sample_params->custom_sigmas,
+                                    sample_params->custom_sigmas + sample_params->custom_sigmas_count);
+        sample_steps = static_cast<int>(sigmas.size()) - 1;
+    } else {
+        scheduler_t scheduler = sample_params->scheduler;
+        if (scheduler == SCHEDULER_COUNT) {
+            scheduler = sd_get_default_scheduler(sd_ctx, sample_method);
+        }
+        // Latent-space W/H -> pixel-space seq len needs the vae scale factor.
+        int vae_scale_factor = sd_ctx->sd->get_vae_scale_factor();
+        sigmas = sd_ctx->sd->denoiser->get_sigmas(sample_steps,
+                                                  sd_ctx->sd->get_image_seq_len(H * vae_scale_factor,
+                                                                                W * vae_scale_factor),
+                                                  scheduler,
+                                                  sd_ctx->sd->version);
+    }
+
+    // img2img: trim the sigma schedule by strength (mirrors generate_image).
+    if (is_img2img && strength < 1.0f) {
+        size_t t_enc = static_cast<size_t>(sample_steps * strength);
+        if (t_enc == static_cast<size_t>(sample_steps)) {
+            t_enc--;
+        }
+        std::vector<float> sigma_sched;
+        sigma_sched.assign(sigmas.begin() + sample_steps - t_enc - 1, sigmas.end());
+        sigmas = sigma_sched;
+    }
+
+    struct ggml_tensor* x_0 = sd_ctx->sd->sample(work_ctx,
+                                                 sd_ctx->sd->diffusion_model,
+                                                 true,
+                                                 x_t,
+                                                 noise_t,
+                                                 c,
+                                                 uc,
+                                                 img_cond,
+                                                 nullptr,           // control_hint
+                                                 0.0f,              // control_strength
+                                                 sample_params->guidance,
+                                                 sample_params->eta,
+                                                 sample_params->shifted_timestep,
+                                                 sample_method,
+                                                 sigmas,
+                                                 -1,                // start_merge_step
+                                                 SDCondition(),     // id_cond
+                                                 {},                // ref_latents
+                                                 false,             // increase_ref_index
+                                                 nullptr,           // denoise_mask
+                                                 nullptr,           // vace_context
+                                                 1.0f,              // vace_strength
+                                                 nullptr);          // cache_params
+    sd_tensor out = ggml_to_sd_tensor(x_0);
+
+    ggml_free(work_ctx);
+    return out;
+}
+
+void sd_tensor_free(sd_tensor* t) {
+    if (t != nullptr && t->data != nullptr) {
+        free(t->data);
+        t->data   = nullptr;
+        t->nbytes = 0;
+    }
+}
+
+void sd_cond_free(sd_cond* c) {
+    if (c != nullptr) {
+        sd_tensor_free(&c->crossattn);
+        sd_tensor_free(&c->vector);
+        sd_tensor_free(&c->concat);
+    }
+}
+
+// --- step-wise sampling (Stage 2) ------------------------------------------
+
+void sd_floats_free(float* p) {
+    free(p);
+}
+
+float* sd_sampler_sigmas(sd_ctx_t* sd_ctx,
+                         enum scheduler_t scheduler,
+                         enum sample_method_t sample_method,
+                         int sample_steps,
+                         int width,
+                         int height,
+                         int* out_len) {
+    if (out_len != nullptr) {
+        *out_len = 0;
+    }
+    if (sd_ctx == nullptr || sd_ctx->sd == nullptr || sd_ctx->sd->denoiser == nullptr ||
+        sample_steps <= 0) {
+        return nullptr;
+    }
+
+    if (sample_method == SAMPLE_METHOD_COUNT) {
+        sample_method = sd_get_default_sample_method(sd_ctx);
+    }
+    if (scheduler == SCHEDULER_COUNT) {
+        scheduler = sd_get_default_scheduler(sd_ctx, sample_method);
+    }
+
+    // width/height are in pixel space here (mirrors generate_image, which calls
+    // get_image_seq_len with pixel dimensions).
+    std::vector<float> sigmas = sd_ctx->sd->denoiser->get_sigmas(
+        sample_steps,
+        sd_ctx->sd->get_image_seq_len(height, width),
+        scheduler,
+        sd_ctx->sd->version);
+
+    int n   = static_cast<int>(sigmas.size());
+    float* p = (float*)malloc(sizeof(float) * static_cast<size_t>(n));
+    if (p == nullptr) {
+        return nullptr;
+    }
+    for (int i = 0; i < n; i++) {
+        p[i] = sigmas[i];
+    }
+    if (out_len != nullptr) {
+        *out_len = n;
+    }
+    return p;
+}
+
+void sd_sampler_begin(sd_ctx_t* sd_ctx) {
+    if (sd_ctx != nullptr && sd_ctx->sd != nullptr && sd_ctx->sd->diffusion_model != nullptr) {
+        sd_ctx->sd->diffusion_model->begin_batch_compute();
+    }
+}
+
+void sd_sampler_end(sd_ctx_t* sd_ctx) {
+    if (sd_ctx != nullptr && sd_ctx->sd != nullptr && sd_ctx->sd->diffusion_model != nullptr) {
+        sd_ctx->sd->diffusion_model->end_batch_compute();
+        sd_ctx->sd->diffusion_model->free_compute_buffer();
+    }
+}
+
+sd_tensor sd_noise_scale(sd_ctx_t* sd_ctx,
+                         sd_tensor init_latent,
+                         sd_tensor noise,
+                         float sigma0) {
+    if (sd_ctx == nullptr || sd_ctx->sd == nullptr || sd_ctx->sd->denoiser == nullptr ||
+        noise.data == nullptr) {
+        return sd_tensor_empty();
+    }
+
+    struct ggml_context* work_ctx = sd_lowlevel_work_ctx(static_cast<size_t>(64) * 1024 * 1024);
+    if (work_ctx == nullptr) {
+        LOG_ERROR("sd_noise_scale: ggml_init() failed");
+        return sd_tensor_empty();
+    }
+
+    struct ggml_tensor* noise_t = sd_tensor_to_ggml(work_ctx, &noise);
+    struct ggml_tensor* x_t     = sd_tensor_to_ggml(work_ctx, &init_latent);
+    // txt2img: no init latent -> start from zeros shaped like noise.
+    if (x_t == nullptr) {
+        x_t = ggml_dup_tensor(work_ctx, noise_t);
+        ggml_set_f32(x_t, 0.0f);
+    }
+    // noise_scaling mutates noise/latent in place (see denoiser.hpp).
+    struct ggml_tensor* x = sd_ctx->sd->denoiser->noise_scaling(sigma0, noise_t, x_t);
+    sd_tensor out         = ggml_to_sd_tensor(x);
+
+    ggml_free(work_ctx);
+    return out;
+}
+
+sd_tensor sd_inverse_noise_scale(sd_ctx_t* sd_ctx,
+                                 sd_tensor x,
+                                 float sigma_last) {
+    if (sd_ctx == nullptr || sd_ctx->sd == nullptr || sd_ctx->sd->denoiser == nullptr ||
+        x.data == nullptr) {
+        return sd_tensor_empty();
+    }
+
+    struct ggml_context* work_ctx = sd_lowlevel_work_ctx(static_cast<size_t>(64) * 1024 * 1024);
+    if (work_ctx == nullptr) {
+        LOG_ERROR("sd_inverse_noise_scale: ggml_init() failed");
+        return sd_tensor_empty();
+    }
+
+    struct ggml_tensor* x_t = sd_tensor_to_ggml(work_ctx, &x);
+    struct ggml_tensor* r   = sd_ctx->sd->denoiser->inverse_noise_scaling(sigma_last, x_t);
+    sd_tensor out           = ggml_to_sd_tensor(r);
+
+    ggml_free(work_ctx);
+    return out;
+}
+
+sd_tensor sd_denoise_step(sd_ctx_t* sd_ctx,
+                          sd_tensor x,
+                          float sigma,
+                          sd_cond cond,
+                          sd_cond uncond,
+                          float cfg_scale,
+                          int step,
+                          int total_steps) {
+    (void)step;
+    (void)total_steps;
+    if (sd_ctx == nullptr || sd_ctx->sd == nullptr || x.data == nullptr) {
+        return sd_tensor_empty();
+    }
+
+    struct ggml_context* work_ctx = sd_lowlevel_work_ctx(static_cast<size_t>(1024) * 1024 * 1024);
+    if (work_ctx == nullptr) {
+        LOG_ERROR("sd_denoise_step: ggml_init() failed");
+        return sd_tensor_empty();
+    }
+
+    struct ggml_tensor* x_t = sd_tensor_to_ggml(work_ctx, &x);
+    SDCondition c(sd_tensor_to_ggml(work_ctx, &cond.crossattn),
+                  sd_tensor_to_ggml(work_ctx, &cond.vector),
+                  sd_tensor_to_ggml(work_ctx, &cond.concat));
+    SDCondition uc(sd_tensor_to_ggml(work_ctx, &uncond.crossattn),
+                   sd_tensor_to_ggml(work_ctx, &uncond.vector),
+                   sd_tensor_to_ggml(work_ctx, &uncond.concat));
+
+    struct ggml_tensor* denoised = ggml_dup_tensor(work_ctx, x_t);
+    sd_tensor out                = sd_tensor_empty();
+    if (sd_ctx->sd->denoise_once(work_ctx, x_t, sigma, c, uc, cfg_scale, denoised)) {
+        out = ggml_to_sd_tensor(denoised);
+    }
+
+    ggml_free(work_ctx);
+    return out;
+}
+
+int sd_ctx_get_version(const sd_ctx_t* sd_ctx) {
+    if (sd_ctx == nullptr || sd_ctx->sd == nullptr) {
+        return -1;
+    }
+    return (int)sd_ctx->sd->version;
+}
+
+bool sd_ctx_supports_ref_images(const sd_ctx_t* sd_ctx) {
+    if (sd_ctx == nullptr || sd_ctx->sd == nullptr) {
+        return false;
+    }
+    SDVersion v = sd_ctx->sd->version;
+    // Reference images are consumed by the edit / control families and by the
+    // DiT models that support image conditioning (Flux, Flux.2, SD3, Qwen,
+    // Z-Image). Other models (plain SD1/SD2/SDXL UNets) abort in ggml if refs
+    // are supplied, so this gate must stay conservative.
+    return sd_version_is_unet_edit(v) ||
+           sd_version_is_control(v) ||
+           sd_version_is_dit(v);
 }
 
 sd_image_t* generate_image(sd_ctx_t* sd_ctx, const sd_img_gen_params_t* sd_img_gen_params) {

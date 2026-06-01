@@ -15,5 +15,6 @@ src/sd/vocab_mistral.hpp
 src/sd/vocab_qwen.hpp
 src/sd/vocab_umt5.hpp
 sd2R.Rcheck/
+dev/
 TODO.md
 CLAUDE.md
