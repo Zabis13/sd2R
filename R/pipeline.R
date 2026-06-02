@@ -10,6 +10,10 @@
 #' @param clip_l_path Optional path to CLIP-L model
 #' @param clip_g_path Optional path to CLIP-G model
 #' @param t5xxl_path Optional path to T5-XXL model
+#' @param llm_path Optional path to an LLM text encoder (Qwen3 / Mistral-Small).
+#'   Required for models that use an LLM conditioner, e.g. FLUX.2 Klein (Qwen3),
+#'   FLUX.2 (Mistral-Small), Z-Image and Qwen-Image. Loaded into the
+#'   \code{text_encoders.llm} slot.
 #' @param diffusion_model_path Optional path to separate diffusion model
 #' @param control_net_path Optional path to ControlNet model
 #' @param n_threads Number of CPU threads (0 = auto-detect)
@@ -37,7 +41,8 @@
 #' @param lora_apply_mode LoRA application mode (see \code{LORA_APPLY_MODE})
 #' @param flow_shift Flow shift value for Flux models
 #' @param model_type Model architecture hint: \code{"sd1"}, \code{"sd2"},
-#'   \code{"sdxl"}, \code{"flux"}, \code{"sd3"}, or \code{"auto"}. Used by
+#'   \code{"sdxl"}, \code{"flux"}, \code{"flux2"}, \code{"sd3"}, or
+#'   \code{"auto"}. Used by
 #'   \code{\link{sd_generate}} to determine native resolution and tile sizes.
 #'   With \code{"auto"}, the type is detected from a sibling \code{config.json}
 #'   then the filename (GGUF-metadata detection is a future hook); detection
@@ -95,6 +100,7 @@ sd_ctx <- function(model_path = NULL,
                    clip_l_path = NULL,
                    clip_g_path = NULL,
                    t5xxl_path = NULL,
+                   llm_path = NULL,
                    diffusion_model_path = NULL,
                    control_net_path = NULL,
                    n_threads = 0L,
@@ -129,7 +135,8 @@ sd_ctx <- function(model_path = NULL,
     stop("Either model_path or diffusion_model_path must be provided", call. = FALSE)
   }
   model_type <- match.arg(model_type,
-                          c("sd1", "sd2", "sdxl", "flux", "sd3", "auto"))
+                          c("sd1", "sd2", "sdxl", "flux", "flux2", "sd3",
+                            "auto"))
   if (identical(model_type, "auto")) {
     detect_path <- if (!is.null(model_path)) model_path else diffusion_model_path
     model_type <- .resolve_model_type("auto", detect_path)
@@ -160,6 +167,7 @@ sd_ctx <- function(model_path = NULL,
     clip_l_path = clip_l_path,
     clip_g_path = clip_g_path,
     t5xxl_path = t5xxl_path,
+    llm_path = llm_path,
     diffusion_model_path = diffusion_model_path,
     control_net_path = control_net_path
   )
@@ -362,8 +370,8 @@ sd_generate <- function(ctx,
   height <- as.integer(height)
   model_type <- attr(ctx, "model_type") %||% "sd1"
 
-  # Flux uses guidance-distilled models; cfg_scale should default to 1.0
-  if (model_type == "flux" && cfg_scale == 7.0) {
+  # Flux / Flux.2 use guidance-distilled models; cfg_scale should default to 1.0
+  if (model_type %in% c("flux", "flux2") && cfg_scale == 7.0) {
     cfg_scale <- 1.0
   }
   is_img2img <- !is.null(init_image)
@@ -1028,7 +1036,36 @@ sd_highres_fix <- function(ctx,
     upscaled <- .resize_sd_image(base_img, width, height)
   }
 
-  # Step 3: tiled img2img refinement
+  # Step 3: img2img refinement.
+  # Tiled sampling (MultiDiffusion) only works for convolutional UNets. DiT
+  # denoisers (Flux, Flux.2, SD3) patchify the latent and do not preserve the
+  # tile's spatial layout, so tiling the sampler produces garbage/black output.
+  # For those, refine with direct img2img (VAE tiling still applies).
+  if (model_type %in% c("flux", "flux2", "sd3")) {
+    message(sprintf("[highres_fix] Step 3: img2img (DiT, no tiled sampling) (strength=%.2f, steps=%d)",
+                    hr_strength, hr_steps))
+    result <- sd_img2img(ctx, prompt,
+                         init_image = upscaled,
+                         negative_prompt = negative_prompt,
+                         width = width,
+                         height = height,
+                         sample_method = sample_method,
+                         sample_steps = hr_steps,
+                         cfg_scale = cfg_scale,
+                         seed = seed,
+                         scheduler = scheduler,
+                         clip_skip = clip_skip,
+                         strength = hr_strength,
+                         eta = eta,
+                         vae_mode = vae_mode,
+                         vae_auto_threshold = vae_auto_threshold,
+                         vae_tile_size = vae_tile_size,
+                         vae_tile_overlap = vae_tile_overlap,
+                         cache_mode = cache_mode,
+                         cache_config = cache_config)
+    return(result[[1]])
+  }
+
   message(sprintf("[highres_fix] Step 3: tiled img2img (strength=%.2f, steps=%d)",
                   hr_strength, hr_steps))
   result <- sd_img2img_tiled(ctx, prompt,
@@ -1056,16 +1093,17 @@ sd_highres_fix <- function(ctx,
 }
 
 #' Get native latent tile size for a model type
-#' @param model_type One of "sd1", "sd2", "sdxl", "flux", "sd3"
+#' @param model_type One of "sd1", "sd2", "sdxl", "flux", "flux2", "sd3"
 #' @return Integer tile size in latent pixels
 #' @keywords internal
 .native_latent_tile_size <- function(model_type) {
   switch(model_type,
     sd1  = 64L,   # 64 * 8 = 512px
     sd2  = 64L,   # 64 * 8 = 512px
-    sdxl = 128L,  # 128 * 8 = 1024px
-    flux = 128L,
-    sd3  = 128L,
+    sdxl  = 128L,  # 128 * 8 = 1024px
+    flux  = 128L,
+    flux2 = 128L,
+    sd3   = 128L,
     64L
   )
 }
@@ -1288,16 +1326,17 @@ sd_txt2img_highres <- function(ctx,
 }
 
 #' Get native tile size for a model type
-#' @param model_type One of "sd1", "sd2", "sdxl", "flux", "sd3"
+#' @param model_type One of "sd1", "sd2", "sdxl", "flux", "flux2", "sd3"
 #' @return Integer tile size in pixels
 #' @keywords internal
 .native_tile_size <- function(model_type) {
   switch(model_type,
     sd1  = 512L,
     sd2  = 512L,
-    sdxl = 1024L,
-    flux = 1024L,
-    sd3  = 1024L,
+    sdxl  = 1024L,
+    flux  = 1024L,
+    flux2 = 1024L,
+    sd3   = 1024L,
     768L
   )
 }
@@ -1527,6 +1566,10 @@ sd_convert <- function(input_path, output_path, output_type = SD_TYPE$F16,
     return(vae_mode == "tiled")
   }
 
+  # Optional diagnostics: set SD2R_DEBUG_VAE=1 to trace the auto decision.
+  # Helps localize why a large decode was (not) tiled (see highres_fix OOM).
+  .dbg <- nzchar(Sys.getenv("SD2R_DEBUG_VAE"))
+
   # --- auto mode: try VRAM-aware decision first ---
   if (!is.null(ctx)) {
     device <- attr(ctx, "vram_device") %||% 0L
@@ -1538,12 +1581,27 @@ sd_convert <- function(input_path, output_path, output_type = SD_TYPE$F16,
     if (!is.null(free_vram) && is.numeric(free_vram) && free_vram > 0) {
       required <- .estimate_vae_vram(width, height, model_type, batch) +
         system_reserve
-      return(required > free_vram)
+      decision <- required > free_vram
+      if (.dbg) {
+        message(sprintf(
+          "[vae_tiling] auto/VRAM: %dx%d %s dev=%d free=%.2fGB required=%.2fGB -> tiled=%s",
+          as.integer(width), as.integer(height), model_type, device,
+          free_vram / 1e9, required / 1e9, decision))
+      }
+      return(decision)
     }
   }
 
   # --- fallback: static pixel-area threshold ---
-  as.integer(width) * as.integer(height) >= as.numeric(vae_auto_threshold)
+  decision <- as.integer(width) * as.integer(height) >= as.numeric(vae_auto_threshold)
+  if (.dbg) {
+    message(sprintf(
+      "[vae_tiling] auto/pixel-area (no VRAM query): %dx%d area=%.0f threshold=%.0f -> tiled=%s",
+      as.integer(width), as.integer(height),
+      as.numeric(width) * as.numeric(height),
+      as.numeric(vae_auto_threshold), decision))
+  }
+  decision
 }
 
 #' Parallel generation across multiple GPUs

@@ -11,6 +11,7 @@ sd_ctx(
   clip_l_path = NULL,
   clip_g_path = NULL,
   t5xxl_path = NULL,
+  llm_path = NULL,
   diffusion_model_path = NULL,
   control_net_path = NULL,
   n_threads = 0L,
@@ -49,6 +50,11 @@ sd_ctx(
 \item{clip_g_path}{Optional path to CLIP-G model}
 
 \item{t5xxl_path}{Optional path to T5-XXL model}
+
+\item{llm_path}{Optional path to an LLM text encoder (Qwen3 / Mistral-Small).
+Required for models that use an LLM conditioner, e.g. FLUX.2 Klein (Qwen3),
+FLUX.2 (Mistral-Small), Z-Image and Qwen-Image. Loaded into the
+\code{text_encoders.llm} slot.}
 
 \item{diffusion_model_path}{Optional path to separate diffusion model}
 
@@ -104,7 +110,8 @@ GPU drivers or backends.}
 \item{flow_shift}{Flow shift value for Flux models}
 
 \item{model_type}{Model architecture hint: \code{"sd1"}, \code{"sd2"},
-\code{"sdxl"}, \code{"flux"}, \code{"sd3"}, or \code{"auto"}. Used by
+\code{"sdxl"}, \code{"flux"}, \code{"flux2"}, \code{"sd3"}, or
+\code{"auto"}. Used by
 \code{\link{sd_generate}} to determine native resolution and tile sizes.
 With \code{"auto"}, the type is detected from a sibling \code{config.json}
 then the filename (GGUF-metadata detection is a future hook); detection

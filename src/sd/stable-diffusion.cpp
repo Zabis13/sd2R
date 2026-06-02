@@ -2307,9 +2307,21 @@ public:
             return denoised;
         };
 
-        // Wrap denoise in tiled denoise if tiled sampling is enabled
+        // Wrap denoise in tiled denoise if tiled sampling is enabled.
+        //
+        // Tiled sampling (MultiDiffusion) assumes the denoiser preserves the
+        // spatial layout of its input tile — true for convolutional UNets, but
+        // NOT for DiT denoisers (Flux, Flux.2, SD3, ...). A DiT patchifies the
+        // latent into a token sequence and does not return a tile-shaped output
+        // (e.g. Flux.2 returns the full-width latent for a narrow tile),
+        // producing garbage/black results. Disable tiled sampling for DiT and
+        // fall back to normal full-frame sampling; VAE tiling still applies.
         denoise_cb_t effective_denoise = denoise;
-        if (tiled_sample_params.enabled) {
+        if (tiled_sample_params.enabled && sd_version_is_dit(version)) {
+            LOG_WARN("Tiled sampling is not supported for DiT models (Flux/SD3/...); "
+                     "using normal sampling instead");
+        }
+        if (tiled_sample_params.enabled && !sd_version_is_dit(version)) {
             int ts       = tiled_sample_params.tile_size;
             float t_ovlp = tiled_sample_params.tile_overlap;
             int latent_w = (int)x->ne[0];
@@ -2350,36 +2362,28 @@ public:
                 auto noise_pred = std::make_shared<std::vector<float>>(buf_size);
                 auto weight_map = std::make_shared<std::vector<float>>(buf_size);
 
-                // Pre-compute weight_map: sum of Gaussian weights at each global position.
-                // This is constant across all steps — compute once, reuse.
-                std::fill(weight_map->begin(), weight_map->end(), 0.0f);
-                for (size_t ti = 0; ti < grid.size(); ti++) {
-                    int tx = grid[ti].first;
-                    int ty = grid[ti].second;
-                    for (int n = 0; n < N; n++) {
-                        for (int c = 0; c < C; c++) {
-                            for (int y = 0; y < ts; y++) {
-                                for (int x = 0; x < ts; x++) {
-                                    float w  = gauss_mask[y * ts + x];
-                                    int gidx = ((n * C + c) * latent_h + (ty + y)) * latent_w + (tx + x);
-                                    (*weight_map)[gidx] += w;
-                                }
-                            }
-                        }
-                    }
-                }
+                // weight_map (sum of Gaussian weights per global position) is
+                // accumulated lazily on the first denoise step, in lockstep with
+                // noise_pred, then reused. Computing it here would require knowing
+                // each tile's returned size in advance; deferring it guarantees
+                // weight_map and noise_pred always cover exactly the same indices,
+                // which matters for FLUX.2 where the denoised tile size need not
+                // equal ts. Captured by value (shared_ptr) so it survives.
+                auto weight_ready = std::make_shared<bool>(false);
 
                 // Result tensor: allocated once, reused each step
                 ggml_tensor* tiled_result = ggml_new_tensor_4d(work_ctx, GGML_TYPE_F32,
                                                                 latent_w, latent_h, C, N);
 
                 effective_denoise = [&, grid, gauss_mask, tile_input, ts, latent_w, latent_h, C, N, buf_size,
-                                     tiled_result, noise_pred, weight_map](
+                                     tiled_result, noise_pred, weight_map, weight_ready](
                         ggml_tensor* input, float sigma, int step) -> ggml_tensor* {
                     LOG_DEBUG("[tiled] step=%d sigma=%.4f tiles=%zu",
                              step, sigma, grid.size());
-                    // Zero noise_pred each step (weight_map is constant)
+                    // Zero noise_pred each step; weight_map is filled once (step 1).
                     std::fill(noise_pred->begin(), noise_pred->end(), 0.0f);
+                    bool fill_weights = !*weight_ready;
+                    if (fill_weights) std::fill(weight_map->begin(), weight_map->end(), 0.0f);
 
                     for (size_t ti = 0; ti < grid.size(); ti++) {
                         int tx = grid[ti].first;
@@ -2397,22 +2401,32 @@ public:
                         }
                         LOG_DEBUG("[tiled] tile %zu/%zu done", ti+1, grid.size());
 
-                        // Accumulate weighted result into noise_pred
+                        // Accumulate weighted result into noise_pred.
+                        // FIX(flux2): the denoised tile may not match ts exactly
+                        // (vae_scale_factor=16 geometry). Bound the iteration by
+                        // both the returned tile size AND the remaining latent
+                        // extent, and index gauss_mask by its real stride (ts) — a
+                        // 'y * tw + x' stride read past the ts*ts mask, while an
+                        // out-of-range gidx wrote past noise_pred (heap corruption).
                         int tw = (int)tile_denoised->ne[0];
                         int th = (int)tile_denoised->ne[1];
+                        int span_w = std::min(std::min(tw, ts), latent_w - tx);
+                        int span_h = std::min(std::min(th, ts), latent_h - ty);
                         for (int n = 0; n < N; n++) {
                             for (int c = 0; c < C; c++) {
-                                for (int y = 0; y < th; y++) {
-                                    for (int x = 0; x < tw; x++) {
+                                for (int y = 0; y < span_h; y++) {
+                                    for (int x = 0; x < span_w; x++) {
                                         float val = ggml_ext_tensor_get_f32(tile_denoised, x, y, c, n);
-                                        float w   = gauss_mask[y * tw + x];
+                                        float w   = gauss_mask[y * ts + x];
                                         int gidx  = ((n * C + c) * latent_h + (ty + y)) * latent_w + (tx + x);
                                         (*noise_pred)[gidx] += val * w;
+                                        if (fill_weights) (*weight_map)[gidx] += w;
                                     }
                                 }
                             }
                         }
                     }
+                    *weight_ready = true;
 
                     // Normalize: noise_pred /= weight_map
                     float* result_data = (float*)tiled_result->data;

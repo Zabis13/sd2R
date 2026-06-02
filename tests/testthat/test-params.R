@@ -54,6 +54,22 @@ test_that("model_type=auto falls back to filename heuristic", {
   expect_identical(.resolve_model_type("auto", "/tmp/sd_xl_base.safetensors"), "sdxl")
 })
 
+test_that("FLUX.2 is detected from filename and not shadowed by flux", {
+  # flux2 must win over the generic "flux" match (order-sensitive).
+  expect_identical(.guess_model_type("flux2-klein-9B.gguf"), "flux2")
+  expect_identical(.guess_model_type("flux.2_base.safetensors"), "flux2")
+  expect_identical(.guess_model_type("flux-2-dev.gguf"), "flux2")
+  # plain flux1 must still resolve to "flux", never "flux2".
+  expect_identical(.guess_model_type("flux1-dev-Q4_K_S.gguf"), "flux")
+  expect_identical(.guess_model_type("flux-dev.safetensors"), "flux")
+  expect_identical(.resolve_model_type("auto", "/tmp/flux2-klein.gguf"), "flux2")
+})
+
+test_that("FLUX.2 has native tile/latent sizes (same as flux)", {
+  expect_identical(.native_tile_size("flux2"), 1024L)
+  expect_identical(.native_latent_tile_size("flux2"), 128L)
+})
+
 test_that("non-auto model_type passes through unchanged", {
   expect_identical(.resolve_model_type("sd1", "irrelevant"), "sd1")
   expect_identical(.resolve_model_type("flux", ""), "flux")

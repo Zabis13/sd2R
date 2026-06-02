@@ -64,10 +64,11 @@
 
 #' Guess model type from filename
 #' @param filename File basename
-#' @return Character: "flux", "sdxl", "sd1", "sd2", "sd3", or "unknown"
+#' @return Character: "flux2", "flux", "sdxl", "sd1", "sd2", "sd3", or "unknown"
 #' @keywords internal
 .guess_model_type <- function(filename) {
   fn <- tolower(filename)
+  if (grepl("flux[._-]?2|flux2", fn)) return("flux2")
   if (grepl("flux", fn)) return("flux")
   if (grepl("sdxl|_xl", fn)) return("sdxl")
   if (grepl("sd3", fn)) return("sd3")
@@ -120,6 +121,7 @@
   if (!nzchar(hay)) return(NULL)
 
   # Confident matches only; order matters (most specific first).
+  if (grepl("flux[._-]?2|flux2", hay))           return("flux2")
   if (grepl("flux", hay))                        return("flux")
   if (grepl("sd3|stable[-_ ]?diffusion[-_ ]?3|mmdit", hay)) return("sd3")
   if (grepl("sdxl|[-_ ]xl\\b", hay))             return("sdxl")
@@ -146,6 +148,7 @@
   hay <- tolower(paste(c(j$model_type, j$architectures, j[["_class_name"]]),
                        collapse = " "))
   if (!nzchar(hay)) return(NULL)
+  if (grepl("flux[._-]?2|flux2", hay))    return("flux2")
   if (grepl("flux", hay))                 return("flux")
   if (grepl("sd3|stablediffusion3|mmdit", hay)) return("sd3")
   if (grepl("xl|sdxl", hay))              return("sdxl")
@@ -181,7 +184,7 @@
   if (is.null(detected)) {
     stop("Cannot detect model_type from '", basename(path), "'. ",
          "Set it explicitly, e.g. model_type = \"flux\" ",
-         "(one of: sd1, sd2, sdxl, flux, sd3).", call. = FALSE)
+         "(one of: sd1, sd2, sdxl, flux, flux2, sd3).", call. = FALSE)
   }
   detected
 }
@@ -219,7 +222,7 @@
 #' \code{\link{sd_load_model}}.
 #'
 #' @param id Unique model identifier (e.g. "flux-dev", "sd15-base")
-#' @param model_type Model architecture: "sd1", "sd2", "sdxl", "flux", "sd3"
+#' @param model_type Model architecture: "sd1", "sd2", "sdxl", "flux", "flux2", "sd3"
 #' @param paths Named list of file paths. Recognized names:
 #'   \code{diffusion}, \code{model} (alias for diffusion), \code{vae},
 #'   \code{clip_l}, \code{clip_g}, \code{t5xxl}, \code{taesd},
@@ -250,7 +253,7 @@ sd_register_model <- function(id, model_type, paths, defaults = list(),
     stop("Package 'jsonlite' is required. Install with install.packages('jsonlite')",
          call. = FALSE)
   }
-  model_type <- match.arg(model_type, c("sd1", "sd2", "sdxl", "flux", "sd3", "unknown"))
+  model_type <- match.arg(model_type, c("sd1", "sd2", "sdxl", "flux", "flux2", "sd3", "unknown"))
 
   registry <- .read_registry()
   if (!overwrite && id %in% vapply(registry, `[[`, character(1), "id")) {

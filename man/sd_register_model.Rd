@@ -9,7 +9,7 @@ sd_register_model(id, model_type, paths, defaults = list(), overwrite = FALSE)
 \arguments{
 \item{id}{Unique model identifier (e.g. "flux-dev", "sd15-base")}
 
-\item{model_type}{Model architecture: "sd1", "sd2", "sdxl", "flux", "sd3"}
+\item{model_type}{Model architecture: "sd1", "sd2", "sdxl", "flux", "flux2", "sd3"}
 
 \item{paths}{Named list of file paths. Recognized names:
 \code{diffusion}, \code{model} (alias for diffusion), \code{vae},

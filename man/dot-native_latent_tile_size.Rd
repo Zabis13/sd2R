@@ -7,7 +7,7 @@
 .native_latent_tile_size(model_type)
 }
 \arguments{
-\item{model_type}{One of "sd1", "sd2", "sdxl", "flux", "sd3"}
+\item{model_type}{One of "sd1", "sd2", "sdxl", "flux", "flux2", "sd3"}
 }
 \value{
 Integer tile size in latent pixels

@@ -16,7 +16,7 @@ A concrete model type string
 }
 \description{
 When \code{model_type == "auto"}, tries, in order: GGUF KV metadata
-(\code{\link{.detect_model_type_gguf}}, currently a hook), a sibling
+(\code{\link{.detect_model_type_gguf}}, header-only probe), a sibling
 \code{config.json} (\code{\link{.detect_model_type_config}}), then the
 filename heuristic (\code{\link{.guess_model_type}}). If all fail it errors
 with a hint to set \code{model_type} explicitly rather than guessing.

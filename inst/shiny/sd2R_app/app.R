@@ -40,6 +40,14 @@ MODEL_PRESETS <- list(
     max_chars = 2000,
     resolutions = c("512x512", "768x768", "1024x1024")
   ),
+  flux2 = list(
+    label = "FLUX.2 (Klein)",
+    width = 1024L, height = 1024L,
+    steps = 20L, cfg = 1.0,
+    sampler = "EULER", scheduler = "SIMPLE",
+    max_chars = 2000,
+    resolutions = c("512x512", "768x768", "1024x1024")
+  ),
   sd3 = list(
     label = "SD 3",
     width = 1024L, height = 1024L,
@@ -54,30 +62,34 @@ sampler_names  <- names(sd2R::SAMPLE_METHOD)
 scheduler_names <- names(sd2R::SCHEDULER)
 
 # ---------- Classify files by role (based on filename) ----------
-# Returns a named list of character vectors: $main, $diffusion, $vae, $clip_l, $t5xxl
-# Each file appears only in dropdowns where it can plausibly be used.
+# Returns a named list of character vectors: $main, $diffusion, $vae, $clip_l,
+# $t5xxl, $llm. Each file appears only in dropdowns where it can plausibly be used.
 classify_files <- function(files) {
   if (length(files) == 0) {
     return(list(main = character(), diffusion = character(),
-                vae = character(), clip_l = character(), t5xxl = character()))
+                vae = character(), clip_l = character(),
+                t5xxl = character(), llm = character()))
   }
   fl <- tolower(files)
 
   is_vae      <- grepl("(^|[^a-z])(vae|\\bae\\b)", fl)
   is_clip     <- grepl("clip", fl) & !grepl("clip_vision|clip-vision", fl)
   is_t5       <- grepl("t5", fl)
-  is_diff     <- grepl("flux|sd3|dit|unet", fl)
+  # LLM text encoder for FLUX.2 (Qwen3 / Mistral-Small) and other DiT LLMs.
+  is_llm      <- grepl("qwen|mistral", fl)
+  is_diff     <- grepl("flux|sd3|dit|unet", fl) & !is_llm
   is_aux_only <- grepl("upscaler|esrgan|taesd|lora|controlnet|control_net|photo_maker|clip_vision|clip-vision", fl)
 
   # Main checkpoint = anything that isn't a recognized auxiliary or diffusion-only file
-  is_main <- !is_vae & !is_clip & !is_t5 & !is_diff & !is_aux_only
+  is_main <- !is_vae & !is_clip & !is_t5 & !is_llm & !is_diff & !is_aux_only
 
   list(
     main      = files[is_main],
     diffusion = files[is_diff],
     vae       = files[is_vae],
     clip_l    = files[is_clip],
-    t5xxl     = files[is_t5]
+    t5xxl     = files[is_t5],
+    llm       = files[is_llm]
   )
 }
 
@@ -92,16 +104,20 @@ auto_assign_roles <- function(dir_path) {
   fl <- tolower(files)
 
   roles <- list(arch = "sd1", model = "", diffusion = "", vae = "",
-                clip_l = "", t5xxl = "")
+                clip_l = "", t5xxl = "", llm = "")
   assigned <- rep(FALSE, length(files))
 
-  # Step 1: detect architecture from filenames
-  has_flux <- any(grepl("flux", fl))
-  has_sd3  <- any(grepl("sd3", fl))
-  has_sdxl <- any(grepl("sdxl|sd_xl", fl))
-  has_t5   <- any(grepl("t5", fl))
+  # Step 1: detect architecture from filenames.
+  # flux2 must be checked before flux (flux2 filenames also contain "flux").
+  has_flux2 <- any(grepl("flux[._-]?2|flux2", fl))
+  has_flux  <- any(grepl("flux", fl))
+  has_sd3   <- any(grepl("sd3", fl))
+  has_sdxl  <- any(grepl("sdxl|sd_xl", fl))
+  has_t5    <- any(grepl("t5", fl))
 
-  if (has_flux) {
+  if (has_flux2) {
+    roles$arch <- "flux2"
+  } else if (has_flux) {
     roles$arch <- "flux"
   } else if (has_sd3) {
     roles$arch <- "sd3"
@@ -113,7 +129,7 @@ auto_assign_roles <- function(dir_path) {
     roles$arch <- "sd1"
   }
 
-  is_multipart <- roles$arch %in% c("flux", "sd3")
+  is_multipart <- roles$arch %in% c("flux", "flux2", "sd3")
 
   # Step 2: assign auxiliary roles (VAE, CLIP, T5)
 
@@ -143,7 +159,16 @@ auto_assign_roles <- function(dir_path) {
     assigned[pick] <- TRUE
   }
 
-  # Step 3: assign diffusion model (Flux/SD3 specific files)
+  # LLM text encoder: Qwen3 (FLUX.2 Klein) / Mistral-Small (full FLUX.2)
+  idx <- grep("qwen|mistral", fl)
+  idx <- setdiff(idx, which(assigned))
+  if (length(idx)) {
+    pick <- idx[which.max(sizes[idx])]
+    roles$llm <- files[pick]
+    assigned[pick] <- TRUE
+  }
+
+  # Step 3: assign diffusion model (Flux/SD3 specific files; LLM already taken)
   idx <- grep("flux|sd3|dit|unet", fl)
   idx <- setdiff(idx, which(assigned))
   if (length(idx)) {
@@ -264,14 +289,19 @@ ui <- fluidPage(
 
       # Auto-assigned dropdowns — visibility depends on architecture
       conditionalPanel(
-        condition = "input.model_type != 'flux' && input.model_type != 'sd3'",
+        condition = "input.model_type != 'flux' && input.model_type != 'flux2' && input.model_type != 'sd3'",
         selectInput("sel_model", "Model", choices = NULL)
       ),
       conditionalPanel(
-        condition = "input.model_type == 'flux' || input.model_type == 'sd3'",
+        condition = "input.model_type == 'flux' || input.model_type == 'flux2' || input.model_type == 'sd3'",
         selectInput("sel_diffusion", "Diffusion model", choices = NULL),
         selectInput("sel_clip_l", "CLIP-L (optional)", choices = NULL),
         selectInput("sel_t5xxl", "T5-XXL (optional)", choices = NULL)
+      ),
+      # LLM text encoder — FLUX.2 only (Qwen3 / Mistral-Small)
+      conditionalPanel(
+        condition = "input.model_type == 'flux2'",
+        selectInput("sel_llm", "LLM encoder (Qwen3/Mistral)", choices = NULL)
       ),
       selectInput("sel_vae", "VAE (optional)", choices = NULL),
 
@@ -396,6 +426,7 @@ server <- function(input, output, session) {
     updateSelectInput(session, "sel_vae",       choices = mk(by_role$vae),       selected = roles$vae)
     updateSelectInput(session, "sel_clip_l",    choices = mk(by_role$clip_l),    selected = roles$clip_l)
     updateSelectInput(session, "sel_t5xxl",     choices = mk(by_role$t5xxl),     selected = roles$t5xxl)
+    updateSelectInput(session, "sel_llm",       choices = mk(by_role$llm),       selected = roles$llm)
 
     showNotification(sprintf("Found %d files, detected: %s",
                              length(all_files), toupper(roles$arch)),
@@ -423,7 +454,8 @@ server <- function(input, output, session) {
       diffusion_model_path = full(input$sel_diffusion),
       vae_path             = full(input$sel_vae),
       clip_l_path          = full(input$sel_clip_l),
-      t5xxl_path           = full(input$sel_t5xxl)
+      t5xxl_path           = full(input$sel_t5xxl),
+      llm_path             = full(input$sel_llm)
     )
   }
 
@@ -439,12 +471,16 @@ server <- function(input, output, session) {
 
     # Clear stale role selections from the other branch to avoid sending
     # incompatible path combinations to sd.cpp
-    if (input$model_type %in% c("flux", "sd3")) {
+    if (input$model_type %in% c("flux", "flux2", "sd3")) {
       updateSelectInput(session, "sel_model", selected = "")
     } else {
       updateSelectInput(session, "sel_diffusion", selected = "")
       updateSelectInput(session, "sel_clip_l",    selected = "")
       updateSelectInput(session, "sel_t5xxl",     selected = "")
+    }
+    # LLM encoder applies to flux2 only
+    if (!identical(input$model_type, "flux2")) {
+      updateSelectInput(session, "sel_llm", selected = "")
     }
   })
 
@@ -564,6 +600,8 @@ server <- function(input, output, session) {
       ctx_params$clip_l_path <- paths$clip_l_path
     if (!is.null(paths$t5xxl_path))
       ctx_params$t5xxl_path <- paths$t5xxl_path
+    if (!is.null(paths$llm_path))
+      ctx_params$llm_path <- paths$llm_path
 
     # Set log + progress files and launch async
     sd2R:::sd_set_log_file(log_file)
@@ -640,6 +678,7 @@ server <- function(input, output, session) {
     rv$generating <- TRUE
     local_state$gen_dims <- dims
     local_state$gen_seed <- as.integer(input$seed)
+    local_state$gen_t0 <- as.numeric(Sys.time())
     rv$status_msg <- "Starting generation..."
 
     # Set progress file path in C++
@@ -702,8 +741,9 @@ server <- function(input, output, session) {
           local_state$last_image <- imgs[[1]]
           local_state$preview_image <- NULL  # final replaces preview
           rv$image_trigger <- Sys.time()
-          p <- read_progress()
-          elapsed <- if (!is.null(p)) round(p$elapsed, 1) else "?"
+          # Total wall-clock generation time (the progress file only carries the
+          # per-step duration, not the whole run).
+          elapsed <- round(as.numeric(Sys.time()) - local_state$gen_t0, 1)
           rv$status_msg <- sprintf("Done. %dx%d, seed=%d, %.1fs",
                                    local_state$gen_dims[1], local_state$gen_dims[2],
                                    local_state$gen_seed, elapsed)

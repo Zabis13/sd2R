@@ -2,7 +2,7 @@
 % Please edit documentation in R/model_manager.R
 \name{.detect_model_type_gguf}
 \alias{.detect_model_type_gguf}
-\title{Detect model type from a GGUF file's KV metadata (hook / not yet available)}
+\title{Detect model type from a GGUF file's KV metadata (header-only probe)}
 \usage{
 .detect_model_type_gguf(path)
 }
@@ -10,19 +10,21 @@
 \item{path}{Path to a .gguf file}
 }
 \value{
-Model type string, or \code{NULL} if unavailable
+Model type string, or \code{NULL} if unavailable / inconclusive
 }
 \description{
-Intended integration point for reading \code{general.architecture} from a
-GGUF header WITHOUT loading tensor weights. ggmlR's current
-\code{gguf_load()} allocates and reads the full tensor blob (no_alloc =
-FALSE), which is unacceptable for a lightweight type probe on multi-GB Flux
-models. Until ggmlR exposes a metadata-only load (e.g.
-\code{gguf_load(path, meta_only = TRUE)} backed by ggml's no_alloc), this
-returns \code{NULL} so the caller falls through to config.json / filename.
+Reads \code{general.architecture} (and a few related KV keys) from a GGUF
+header WITHOUT loading tensor weights, via
+\code{ggmlR::gguf_load(path, meta_only = TRUE)} (no_alloc header read). Cheap
+even on multi-GB Flux models.
 }
 \details{
-Replace the body with a real header read once ggmlR supports it — this is
-the single line to change.
+Note: stable-diffusion.cpp itself detects the version from tensor
+\emph{names/shapes}, not from \code{general.architecture}, so many diffusion
+GGUFs (e.g. quantized Flux converters) leave that field empty or set it to a
+sub-component name (e.g. \code{"t5"} for a packed text encoder). This probe
+is therefore best-effort: it returns a concrete type only on a confident
+match and otherwise \code{NULL}, so the caller falls through to
+config.json / filename detection.
 }
 \keyword{internal}

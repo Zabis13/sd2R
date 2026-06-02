@@ -1,3 +1,10 @@
+# sd2R 0.2.1
+
+* FLUX.2 (Klein 4B) support via `model_type = "flux2"`, with auto-detection from tensors/filename.
+* New `llm_path` argument in `sd_ctx()` for LLM text encoders (Qwen3 for FLUX.2 Klein, Mistral-Small for full FLUX.2).
+
+---
+
 # sd2R 0.2.0
 
 ## Performance: VAE Decode ×24 Faster

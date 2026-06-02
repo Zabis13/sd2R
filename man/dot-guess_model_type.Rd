@@ -10,7 +10,7 @@
 \item{filename}{File basename}
 }
 \value{
-Character: "flux", "sdxl", "sd1", "sd2", "sd3", or "unknown"
+Character: "flux2", "flux", "sdxl", "sd1", "sd2", "sd3", or "unknown"
 }
 \description{
 Guess model type from filename
