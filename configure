@@ -5,6 +5,15 @@
 # 3. Resolve OpenMP flags from R's Makeconf
 # 4. Auto-detect Vulkan support
 
+# ---- Find R and Rscript (needed early for the download fallback) ----
+
+: ${R_HOME=$(R RHOME 2>/dev/null)}
+if [ -n "$R_HOME" ]; then
+  RSCRIPT="${R_HOME}/bin/Rscript"
+else
+  RSCRIPT="Rscript"
+fi
+
 # ---- Download vocabulary files from GitHub Releases ----
 
 VOCAB_BASE_URL="https://github.com/Zabis13/sd2R/releases/download/assets"
@@ -12,7 +21,8 @@ VOCAB_DIR="src/sd"
 VOCAB_FILES="vocab.hpp vocab_mistral.hpp vocab_qwen.hpp vocab_umt5.hpp"
 DOWNLOAD_FAILED=0
 
-# Find a download tool
+# Find optional external download tools, with R's own download.file() as a
+# fallback that is always available when neither curl nor wget is present.
 DOWNLOADER=""
 if command -v curl >/dev/null 2>&1; then
   DOWNLOADER="curl"
@@ -20,24 +30,30 @@ elif command -v wget >/dev/null 2>&1; then
   DOWNLOADER="wget"
 fi
 
+# download_one URL DEST -> prints diagnostics, leaves a non-empty DEST on success
+download_one() {
+  _url="$1"; _dest="$2"; _err=""
+  if [ "$DOWNLOADER" = "curl" ]; then
+    _err=$(curl -fSL --retry 3 -o "${_dest}" "${_url}" 2>&1)
+  elif [ "$DOWNLOADER" = "wget" ]; then
+    _err=$(wget --tries=3 -O "${_dest}" "${_url}" 2>&1)
+  fi
+  if [ ! -s "${_dest}" ]; then
+    _err=$("$RSCRIPT" -e "tryCatch(utils::download.file('${_url}', '${_dest}', mode='wb', quiet=TRUE), error=function(e) cat(conditionMessage(e)))" 2>&1)
+  fi
+  [ -n "$_err" ] && printf '%s\n' "    ${_err}"
+}
+
 for f in $VOCAB_FILES; do
   if [ -f "${VOCAB_DIR}/${f}" ] && [ -s "${VOCAB_DIR}/${f}" ]; then
     echo "* ${f}: already present, skipping download"
   else
-    if [ -z "$DOWNLOADER" ]; then
-      DOWNLOAD_FAILED=1
-      break
-    fi
     echo "* Downloading ${f}..."
-    if [ "$DOWNLOADER" = "curl" ]; then
-      curl -fSL --retry 3 -o "${VOCAB_DIR}/${f}" "${VOCAB_BASE_URL}/${f}" 2>/dev/null
-    else
-      wget -q --tries=3 -O "${VOCAB_DIR}/${f}" "${VOCAB_BASE_URL}/${f}" 2>/dev/null
-    fi
-    # Verify download
+    download_one "${VOCAB_BASE_URL}/${f}" "${VOCAB_DIR}/${f}"
     if [ ! -f "${VOCAB_DIR}/${f}" ] || [ ! -s "${VOCAB_DIR}/${f}" ]; then
       DOWNLOAD_FAILED=1
       rm -f "${VOCAB_DIR}/${f}"
+      echo "* ${f}: download FAILED"
     else
       echo "* ${f}: downloaded successfully"
     fi
@@ -62,15 +78,6 @@ if [ "$DOWNLOAD_FAILED" -eq 1 ]; then
   echo "  sudo yum install curl    # RHEL/CentOS"
   echo "  brew install curl        # macOS"
   exit 1
-fi
-
-# ---- Find R and Rscript ----
-
-: ${R_HOME=$(R RHOME 2>/dev/null)}
-if [ -n "$R_HOME" ]; then
-  RSCRIPT="${R_HOME}/bin/Rscript"
-else
-  RSCRIPT="Rscript"
 fi
 
 # ---- Resolve ggmlR installed paths ----
