@@ -80,14 +80,15 @@ Imports:
     ggmlR (>= 0.5.0),
     shiny,
     base64enc,
-    jsonlite
+    jsonlite,
+    later,
+    png
 LinkingTo:
     Rcpp,
     ggmlR
 Suggests:
     testthat (>= 3.0.0),
     callr,
-    png,
     plumber,
     drogonR,
     withr

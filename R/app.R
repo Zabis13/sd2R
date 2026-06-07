@@ -16,15 +16,19 @@
 #' sd_app(model_dir = "/path/to/models")
 #' }
 sd_app <- function(model_dir = NULL, launch.browser = TRUE, port = NULL, ...) {
-  if (!requireNamespace("shiny", quietly = TRUE))
-    stop("Package 'shiny' is required. Install with: install.packages('shiny')",
+  # All packages the Shiny app needs at runtime. 'later' drives the async
+  # loading/generation polling; 'png' backs sd_save_image()/sd_load_image(),
+  # used to render and download the generated image.
+  needed <- c("shiny", "base64enc", "jsonlite", "later", "png")
+  missing <- needed[!vapply(needed, requireNamespace, logical(1),
+                            quietly = TRUE)]
+  if (length(missing)) {
+    stop("Package(s) required for sd_app() not installed: ",
+         paste(missing, collapse = ", "),
+         ". Install with: install.packages(c(",
+         paste(sprintf('"%s"', missing), collapse = ", "), "))",
          call. = FALSE)
-  if (!requireNamespace("base64enc", quietly = TRUE))
-    stop("Package 'base64enc' is required. Install with: install.packages('base64enc')",
-         call. = FALSE)
-  if (!requireNamespace("jsonlite", quietly = TRUE))
-    stop("Package 'jsonlite' is required. Install with: install.packages('jsonlite')",
-         call. = FALSE)
+  }
   app_dir <- system.file("shiny", "sd2R_app", package = "sd2R")
   if (!nzchar(app_dir))
     stop("Shiny app not found in sd2R installation", call. = FALSE)
