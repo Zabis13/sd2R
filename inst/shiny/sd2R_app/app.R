@@ -43,7 +43,7 @@ MODEL_PRESETS <- list(
   flux2 = list(
     label = "FLUX.2 (Klein)",
     width = 1024L, height = 1024L,
-    steps = 20L, cfg = 1.0,
+    steps = 4L, cfg = 1.0,
     sampler = "EULER", scheduler = "SIMPLE",
     max_chars = 2000,
     resolutions = c("512x512", "768x768", "1024x1024")
@@ -141,22 +141,31 @@ auto_assign_roles <- function(dir_path) {
     assigned[pick] <- TRUE
   }
 
-  # CLIP-L: "clip" in name
-  idx <- grep("clip", fl)
-  idx <- setdiff(idx, which(assigned))
-  if (length(idx)) {
-    pick <- idx[which.max(sizes[idx])]
-    roles$clip_l <- files[pick]
-    assigned[pick] <- TRUE
+  # FLUX.2 uses an LLM text encoder (Qwen3 / Mistral) only — it has no CLIP-L
+  # or T5-XXL. Assigning those here would pull in incompatible encoders and
+  # confuse model loading, so skip them for flux2.
+  uses_clip_t5 <- roles$arch != "flux2"
+
+  # CLIP-L: "clip" in name (FLUX.1 / SD3 / SDXL)
+  if (uses_clip_t5) {
+    idx <- grep("clip", fl)
+    idx <- setdiff(idx, which(assigned))
+    if (length(idx)) {
+      pick <- idx[which.max(sizes[idx])]
+      roles$clip_l <- files[pick]
+      assigned[pick] <- TRUE
+    }
   }
 
-  # T5-XXL: "t5" in name
-  idx <- grep("t5", fl)
-  idx <- setdiff(idx, which(assigned))
-  if (length(idx)) {
-    pick <- idx[which.max(sizes[idx])]
-    roles$t5xxl <- files[pick]
-    assigned[pick] <- TRUE
+  # T5-XXL: "t5" in name (FLUX.1 / SD3)
+  if (uses_clip_t5) {
+    idx <- grep("t5", fl)
+    idx <- setdiff(idx, which(assigned))
+    if (length(idx)) {
+      pick <- idx[which.max(sizes[idx])]
+      roles$t5xxl <- files[pick]
+      assigned[pick] <- TRUE
+    }
   }
 
   # LLM text encoder: Qwen3 (FLUX.2 Klein) / Mistral-Small (full FLUX.2)
@@ -584,6 +593,12 @@ server <- function(input, output, session) {
       vae_decode_only = TRUE,
       free_params_immediately = FALSE,
       diffusion_flash_attn = TRUE,
+      # sd_ctx_params_init() in C++ leaves vae_conv_direct/diffusion_conv_direct
+      # uninitialized, so they MUST be passed explicitly — otherwise the VAE
+      # convolution path reads garbage and the decode crashes ("vae not start").
+      # Match sd_ctx()'s defaults: VAE on (×24 faster CONV_2D), diffusion off.
+      vae_conv_direct = TRUE,
+      diffusion_conv_direct = FALSE,
       rng_type = as.integer(sd2R::RNG_TYPE$CUDA),
       wtype = as.integer(sd2R::SD_TYPE$COUNT),
       n_threads = 0L,
@@ -602,6 +617,15 @@ server <- function(input, output, session) {
       ctx_params$t5xxl_path <- paths$t5xxl_path
     if (!is.null(paths$llm_path))
       ctx_params$llm_path <- paths$llm_path
+
+    # FLUX.2: request the meta backend when this build supports it (ggmlR has
+    # ggml_backend_meta_device). It only actually engages with >= 2 GPUs (C++
+    # falls back to the normal single-backend path on 1 GPU or older builds).
+    meta_ok <- isTRUE(tryCatch(sd2R:::sd_meta_backend_available(),
+                               error = function(e) FALSE))
+    if (identical(input$model_type, "flux2") && meta_ok) {
+      ctx_params$meta_backend <- TRUE
+    }
 
     # Set log + progress files and launch async
     sd2R:::sd_set_log_file(log_file)
@@ -684,19 +708,36 @@ server <- function(input, output, session) {
     # Set progress file path in C++
     sd2R:::sd_set_progress_file(progress_file)
 
-    # Build params list matching C++ expectations
-    gen_params <- list(
-      prompt = input$prompt,
-      negative_prompt = input$neg_prompt %||% "",
-      width = dims[1],
-      height = dims[2],
-      sample_method = sd2R::SAMPLE_METHOD[[input$sampler]],
-      sample_steps = as.integer(input$steps),
-      cfg_scale = as.numeric(input$cfg),
-      seed = as.integer(input$seed),
-      scheduler = sd2R::SCHEDULER[[input$scheduler]],
-      batch_count = 1L
-    )
+    # Build the executable step plan. This mirrors sd_generate()'s routing:
+    # cfg auto-1.0 for Flux/Flux.2 (the root cause of the VAE crash with cfg=7),
+    # strategy selection (direct / tiled / highres-fix) and VRAM-aware VAE
+    # tiling — none of which the old direct-async path inherited. Highres-fix
+    # expands into base -> upscale -> refine steps run by the state machine.
+    plan <- tryCatch(
+      sd2R:::.sd_generate_plan(
+        local_state$ctx,
+        prompt          = input$prompt,
+        negative_prompt = input$neg_prompt %||% "",
+        width           = dims[1], height = dims[2],
+        sample_method   = sd2R::SAMPLE_METHOD[[input$sampler]],
+        sample_steps    = as.integer(input$steps),
+        cfg_scale       = as.numeric(input$cfg),
+        seed            = as.integer(input$seed),
+        scheduler       = sd2R::SCHEDULER[[input$scheduler]],
+        batch_count     = 1L,
+        vae_mode        = "auto",
+        vae_auto_threshold = 768L * 768L),
+      error = function(e) e)
+    if (inherits(plan, "error")) {
+      rv$generating <- FALSE
+      rv$status_msg <- paste("Plan error:", conditionMessage(plan))
+      sd2R:::sd_clear_progress_file()
+      return()
+    }
+
+    local_state$plan <- plan
+    local_state$step_idx <- 0L          # index of the step about to run
+    local_state$step_image <- NULL      # image carried between steps
 
     # Live preview: write the latest in-progress frame to preview_file. proj
     # mode is cheap and needs no VAE/taesd, so it is always safe to enable.
@@ -707,10 +748,9 @@ server <- function(input, output, session) {
       sd2R::sd_preview_start(preview_file, mode = sd2R::PREVIEW$PROJ, interval = 1L)
     }
 
-    # Launch async generation in C++ thread
+    # Kick off the state machine (runs steps in order, async gen + sync upscale).
     tryCatch({
-      sd2R:::sd_generate_async(local_state$ctx, gen_params)
-      poll_generation()
+      run_next_step()
     }, error = function(e) {
       rv$generating <- FALSE
       rv$status_msg <- paste("Error:", e$message)
@@ -719,8 +759,76 @@ server <- function(input, output, session) {
     })
   })
 
-  # Poll generation status every 500ms via later
-  poll_generation <- function() {
+  # Finish the whole run: release preview, report timing, reset state.
+  finish_generation <- function(err = NULL) {
+    rv$generating <- FALSE
+    sd2R:::sd_clear_progress_file()
+    if (preview_active) { sd2R::sd_preview_stop(); preview_active <<- FALSE }
+    if (!is.null(err)) {
+      rv$status_msg <- paste("Error:", err)
+      return(invisible())
+    }
+    elapsed <- round(as.numeric(Sys.time()) - local_state$gen_t0, 1)
+    rv$status_msg <- sprintf("Done. %dx%d, seed=%d, %.1fs",
+                             local_state$gen_dims[1], local_state$gen_dims[2],
+                             local_state$gen_seed, elapsed)
+  }
+
+  # State machine driver: advance to and execute the next plan step. Synchronous
+  # "upscale" steps run inline (fast) and fall through to the next step; async
+  # "gen" steps launch the C++ worker and hand off to poll_step().
+  run_next_step <- function() {
+    repeat {
+      local_state$step_idx <- local_state$step_idx + 1L
+      if (local_state$step_idx > length(local_state$plan)) {
+        # No final gen step produced an image — shouldn't happen, but be safe.
+        finish_generation()
+        return(invisible())
+      }
+      step <- local_state$plan[[local_state$step_idx]]
+
+      if (identical(step$type, "upscale")) {
+        rv$status_msg <- step$label
+        res <- tryCatch({
+          base_img <- local_state$step_image
+          up <- if (!is.null(step$upscaler) && nzchar(step$upscaler) &&
+                    file.exists(step$upscaler)) {
+            sd2R:::sd_upscale_image(step$upscaler, base_img,
+                                    upscale_factor = step$upscale_factor)
+          } else {
+            base_img
+          }
+          if (up$width != step$width || up$height != step$height) {
+            up <- sd2R:::.resize_sd_image(up, step$width, step$height)
+          }
+          up
+        }, error = function(e) e)
+        if (inherits(res, "error")) {
+          finish_generation(conditionMessage(res)); return(invisible())
+        }
+        local_state$step_image <- res
+        next  # fall through to the next step in the same tick
+      }
+
+      # gen step: launch async, optionally feeding the previous image as init.
+      rv$status_msg <- step$label
+      params <- step$params
+      if (isTRUE(step$uses_init) && !is.null(local_state$step_image)) {
+        params$init_image <- local_state$step_image
+      }
+      ok <- tryCatch({
+        sd2R:::sd_generate_async(local_state$ctx, params)
+        TRUE
+      }, error = function(e) { finish_generation(conditionMessage(e)); FALSE })
+      if (!ok) return(invisible())
+      poll_step(step)
+      return(invisible())
+    }
+  }
+
+  # Poll the currently running gen step every 500ms; on completion store its
+  # image and either finish (final step) or advance the machine.
+  poll_step <- function(step) {
     later::later(function() {
       status <- sd2R:::sd_generate_poll()
       rv$progress_trigger <- Sys.time()
@@ -736,25 +844,25 @@ server <- function(input, output, session) {
       }
 
       if (status$done) {
-        tryCatch({
-          imgs <- sd2R:::sd_generate_result()
-          local_state$last_image <- imgs[[1]]
+        res <- tryCatch(sd2R:::sd_generate_result(), error = function(e) e)
+        if (inherits(res, "error")) {
+          finish_generation(conditionMessage(res)); return()
+        }
+        local_state$step_image <- res[[1]]
+        if (isTRUE(step$final)) {
+          local_state$last_image <- res[[1]]
           local_state$preview_image <- NULL  # final replaces preview
           rv$image_trigger <- Sys.time()
-          # Total wall-clock generation time (the progress file only carries the
-          # per-step duration, not the whole run).
-          elapsed <- round(as.numeric(Sys.time()) - local_state$gen_t0, 1)
-          rv$status_msg <- sprintf("Done. %dx%d, seed=%d, %.1fs",
-                                   local_state$gen_dims[1], local_state$gen_dims[2],
-                                   local_state$gen_seed, elapsed)
-        }, error = function(e) {
-          rv$status_msg <- paste("Error:", e$message)
-        })
-        rv$generating <- FALSE
-        sd2R:::sd_clear_progress_file()
-        if (preview_active) { sd2R::sd_preview_stop(); preview_active <<- FALSE }
+          finish_generation()
+        } else {
+          # Show the intermediate result while the next step runs.
+          local_state$preview_image <- NULL
+          local_state$last_image <- res[[1]]
+          rv$image_trigger <- Sys.time()
+          run_next_step()
+        }
       } else {
-        poll_generation()
+        poll_step(step)
       }
     }, delay = 0.5)
   }

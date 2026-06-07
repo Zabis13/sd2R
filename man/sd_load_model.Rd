@@ -21,8 +21,14 @@ loaded, otherwise creates a new \code{\link{sd_ctx}}. Additional
 arguments override registry defaults.
 }
 \details{
-If loading fails due to insufficient VRAM, automatically unloads the
-least recently used model and retries.
+Before loading, the estimated VRAM need (on-disk weight size times a
+headroom factor plus a reserve) is compared against free GPU memory; if it
+would not fit, least-recently-used models are unloaded first. If loading
+still fails due to insufficient VRAM, the LRU model is unloaded and the load
+is retried once. VRAM estimation/eviction is skipped when GPU memory cannot
+be queried (e.g. CPU backend). Tunable via environment variables
+\code{SD2R_VRAM_HEADROOM} (default 1.2) and \code{SD2R_VRAM_RESERVE_MB}
+(default 512).
 }
 \examples{
 \dontrun{

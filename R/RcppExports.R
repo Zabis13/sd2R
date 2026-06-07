@@ -5,6 +5,10 @@ sd_set_progress_file <- function(path) {
     invisible(.Call(`_sd2R_sd_set_progress_file`, path))
 }
 
+sd_meta_backend_available <- function() {
+    .Call(`_sd2R_sd_meta_backend_available`)
+}
+
 sd_clear_progress_file <- function() {
     invisible(.Call(`_sd2R_sd_clear_progress_file`))
 }

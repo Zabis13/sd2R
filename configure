@@ -16,9 +16,21 @@ fi
 
 # ---- Download vocabulary files from GitHub Releases ----
 
-VOCAB_BASE_URL="https://github.com/Zabis13/sd2R/releases/download/assets"
-VOCAB_DIR="src/sd"
-VOCAB_FILES="vocab.hpp vocab_mistral.hpp vocab_qwen.hpp vocab_umt5.hpp"
+VOCAB_BASE_URL="https://github.com/Zabis13/sd2R/releases/download/assets-v2"
+VOCAB_DIR="src/sd/tokenizers/vocab"
+# Core tokenizer vocab/merges embedded at compile time (~64 MB total):
+#   clip_merges.hpp  — CLIP  (SD1/2/SDXL, Flux clip_l/clip_g)
+#   t5.hpp           — T5    (Flux, SD3)
+#   umt5.hpp         — UMT5  (Wan video)
+#   qwen_merges.hpp  — Qwen2 (Qwen-Image)
+VOCAB_FILES="clip_merges.hpp t5.hpp umt5.hpp qwen_merges.hpp"
+# Optional vocabs for additional text encoders are available on the same
+# release but are NOT downloaded by default (would add ~178 MB). To enable
+# them, define SD2R_FULL_VOCAB in src/Makevars.in and add the files here:
+#   mistral_vocab.hpp mistral_merges.hpp  — Mistral (Chroma-Radiance, Ernie-Image)
+#   gemma_vocab.hpp   gemma_merges.hpp    — Gemma   (LTX audio/video)
+#   gemma2_vocab.hpp  gemma2_merges.hpp   — Gemma2  (PID)
+#   gpt_oss_vocab.hpp gpt_oss_merges.hpp  — GPT-OSS (Lens)
 DOWNLOAD_FAILED=0
 
 # Find optional external download tools, with R's own download.file() as a
@@ -58,6 +70,17 @@ for f in $VOCAB_FILES; do
       echo "* ${f}: downloaded successfully"
     fi
   fi
+
+  # Released vocab files carry CRLF line endings; strip CR so R CMD check does
+  # not flag "CR or CRLF line endings" on the unpacked sources. Runs for both
+  # freshly downloaded and already-present files (e.g. left by an older install).
+  if [ -f "${VOCAB_DIR}/${f}" ] && [ -s "${VOCAB_DIR}/${f}" ]; then
+    if tr -d '\r' < "${VOCAB_DIR}/${f}" > "${VOCAB_DIR}/${f}.tmp" 2>/dev/null; then
+      mv "${VOCAB_DIR}/${f}.tmp" "${VOCAB_DIR}/${f}"
+    else
+      rm -f "${VOCAB_DIR}/${f}.tmp"
+    fi
+  fi
 done
 
 if [ "$DOWNLOAD_FAILED" -eq 1 ]; then
@@ -65,12 +88,12 @@ if [ "$DOWNLOAD_FAILED" -eq 1 ]; then
   echo "ERROR: Failed to download required vocabulary files."
   echo ""
   echo "These files are required for compilation:"
-  echo "  vocab.hpp, vocab_mistral.hpp, vocab_qwen.hpp, vocab_umt5.hpp"
+  echo "  ${VOCAB_FILES}"
   echo ""
   echo "You can download them manually from:"
   echo "  ${VOCAB_BASE_URL}"
   echo ""
-  echo "Place the files into the src/sd/ directory of the package source,"
+  echo "Place the files into the ${VOCAB_DIR}/ directory of the package source,"
   echo "then run install.packages() again."
   echo ""
   echo "If you don't have curl or wget, install one of them:"
@@ -156,12 +179,38 @@ else
   echo "* Vulkan: disabled (ggml_backend_vk_get_device_count not defined in libggml.a)"
 fi
 
+# ---- Detect ggml meta backend support in libggml.a ----
+#
+# The meta backend (ggml 0.11.0+, ggmlR >= 0.7.x) enables multi-GPU tensor
+# split for a single model. sd2R uses it as an optional "second path"
+# (sd_ctx(meta_backend = TRUE)). We must only compile the meta API calls when
+# the symbol is actually defined in libggml.a — otherwise linking fails on
+# older ggmlR. Detection mirrors the Vulkan symbol check above (nm on the .a).
+#
+# Minimum supported ggmlR version for the meta backend: 0.7.8.
+# ggmlR has no compile-time version macro (only the runtime ggml_version()
+# C function), so the symbol presence is the authoritative compile-time gate;
+# the version above is documented here for reference and runtime checks.
+
+META_CPPFLAGS=""
+if [ -f "${GGMLR_LIB}/libggml.a" ]; then
+  if nm --defined-only "${GGMLR_LIB}/libggml.a" 2>/dev/null | grep -q "ggml_backend_meta_device"; then
+    META_CPPFLAGS="-DSD2R_HAVE_META_BACKEND=1"
+    echo "* Meta backend: enabled (ggml_backend_meta_device found in libggml.a)"
+  else
+    echo "* Meta backend: disabled (ggml_backend_meta_device not defined in libggml.a; need ggmlR >= 0.7.8)"
+  fi
+else
+  echo "* Meta backend: disabled (libggml.a not found)"
+fi
+
 # ---- Generate src/Makevars from src/Makevars.in ----
 
 sed -e "s|@GGMLR_LIB@|${GGMLR_LIB}|g" \
     -e "s|@GGMLR_INCLUDE@|${GGMLR_INCLUDE}|g" \
     -e "s|@VULKAN_CPPFLAGS@|${VULKAN_CPPFLAGS}|g" \
     -e "s|@VULKAN_LIBS@|${VULKAN_LIBS}|g" \
+    -e "s|@META_CPPFLAGS@|${META_CPPFLAGS}|g" \
     -e "s|@OPENMP_CPPFLAGS@|${OPENMP_CPPFLAGS}|g" \
     -e "s|@OPENMP_CFLAGS@|${OPENMP_CFLAGS}|g" \
     -e "s|@OPENMP_CXXFLAGS@|${OPENMP_CXXFLAGS}|g" \

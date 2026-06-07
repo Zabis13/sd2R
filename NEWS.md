@@ -2,6 +2,9 @@
 
 * FLUX.2 (Klein 4B) support via `model_type = "flux2"`, with auto-detection from tensors/filename.
 * New `llm_path` argument in `sd_ctx()` for LLM text encoders (Qwen3 for FLUX.2 Klein, Mistral-Small for full FLUX.2).
+* Inpainting: new `mask` argument in `sd_img2img()` regenerates only the masked region. Accepts a PNG path, a numeric matrix, or an SD image (white = generate). Works on plain SD/SDXL/FLUX 1/2 weights via the denoise mask. New helper `sd_load_mask()`.
+* Shiny GUI now shares `sd_generate()`'s auto-routing (CFG, VAE tiling, highres-fix), fixing FLUX.2 VAE-decode crashes.
+* New `meta_backend` argument in `sd_ctx()`: runs the diffusion model through the ggml meta backend for multi-GPU tensor split (a single model sharded across all GPUs). Requires ggmlR >= 0.7.8; falls back to the normal single-backend path otherwise. The Shiny GUI enables it automatically for FLUX.2.
 
 ---
 

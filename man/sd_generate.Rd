@@ -20,6 +20,7 @@ sd_generate(
   scheduler = SCHEDULER$DISCRETE,
   clip_skip = -1L,
   eta = 0,
+  flow_shift = NULL,
   hr_strength = 0.4,
   vae_mode = "auto",
   vae_tile_size = 64L,
@@ -65,6 +66,10 @@ txt2img.}
 \item{clip_skip}{Number of CLIP layers to skip (-1 = auto)}
 
 \item{eta}{Eta parameter for DDIM-like samplers}
+
+\item{flow_shift}{Flow shift for flow-matching models (Flux, SD3). \code{NULL}
+(default) lets the model pick an architecture-specific value; set a numeric
+value to override. Ignored by non-flow models.}
 
 \item{hr_strength}{Denoising strength for highres fix refinement pass
 (default 0.4). Only used when auto-routing selects highres fix.}

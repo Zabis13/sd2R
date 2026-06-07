@@ -20,8 +20,8 @@ test_that("constants are defined and 0-based", {
 })
 
 test_that("constants have correct count", {
-  expect_equal(length(SAMPLE_METHOD), 12)
-  expect_equal(length(SCHEDULER), 10)
+  expect_equal(length(SAMPLE_METHOD), 18)
+  expect_equal(length(SCHEDULER), 12)
   expect_equal(length(PREDICTION), 6)
   expect_equal(length(RNG_TYPE), 3)
 })

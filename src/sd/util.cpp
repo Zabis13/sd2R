@@ -1,10 +1,9 @@
 #include "util.h"
-#ifdef GGML_R_PACKAGE
-
-#endif
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdarg>
+#include <exception>
 #include <fstream>
 #include <locale>
 #include <regex>
@@ -25,7 +24,6 @@
 #include <unistd.h>
 #endif
 
-#include "ggml-cpu.h"
 #include "ggml.h"
 #include "stable-diffusion.h"
 
@@ -117,7 +115,7 @@ private:
     HANDLE hmapping_;
 };
 
-std::unique_ptr<MmapWrapper> MmapWrapper::create(const std::string& filename) {
+std::unique_ptr<MmapWrapper> MmapWrapper::create(const std::string& filename, bool writable) {
     void* mapped_data = nullptr;
     size_t file_size  = 0;
 
@@ -125,10 +123,10 @@ std::unique_ptr<MmapWrapper> MmapWrapper::create(const std::string& filename) {
         filename.c_str(),
         GENERIC_READ,
         FILE_SHARE_READ,
-        NULL,
+        nullptr,
         OPEN_EXISTING,
         FILE_ATTRIBUTE_NORMAL,
-        NULL);
+        nullptr);
 
     if (file_handle == INVALID_HANDLE_VALUE) {
         return nullptr;
@@ -142,16 +140,20 @@ std::unique_ptr<MmapWrapper> MmapWrapper::create(const std::string& filename) {
 
     file_size = static_cast<size_t>(size.QuadPart);
 
-    HANDLE mapping_handle = CreateFileMapping(file_handle, NULL, PAGE_READONLY, 0, 0, NULL);
+    DWORD page_prot = writable ? PAGE_WRITECOPY : PAGE_READONLY;
 
-    if (mapping_handle == NULL) {
+    HANDLE mapping_handle = CreateFileMapping(file_handle, nullptr, page_prot, 0, 0, nullptr);
+
+    if (mapping_handle == nullptr) {
         CloseHandle(file_handle);
         return nullptr;
     }
 
-    mapped_data = MapViewOfFile(mapping_handle, FILE_MAP_READ, 0, 0, file_size);
+    DWORD view_access = writable ? FILE_MAP_COPY : FILE_MAP_READ;
 
-    if (mapped_data == NULL) {
+    mapped_data = MapViewOfFile(mapping_handle, view_access, 0, 0, file_size);
+
+    if (mapped_data == nullptr) {
         CloseHandle(mapping_handle);
         CloseHandle(file_handle);
         return nullptr;
@@ -177,28 +179,85 @@ bool is_directory(const std::string& path) {
     return (stat(path.c_str(), &buffer) == 0 && S_ISDIR(buffer.st_mode));
 }
 
-class MmapWrapperImpl : public MmapWrapper {
-public:
-    MmapWrapperImpl(void* data, size_t size)
-        : MmapWrapper(data, size) {}
-
-    ~MmapWrapperImpl() override {
-        munmap(data_, size_);
-    }
+struct MmapFlags {
+    bool sequential;
+    bool populate;
+    bool willneed;
+    bool dontneed;
 };
 
-std::unique_ptr<MmapWrapper> MmapWrapper::create(const std::string& filename) {
+static MmapFlags get_mmap_flags() {
+    MmapFlags result          = {};
+    const char* SD_MMAP_FLAGS = std::getenv("SD_MMAP_FLAGS");
+    if (SD_MMAP_FLAGS && *SD_MMAP_FLAGS) {
+        std::stringstream ss(SD_MMAP_FLAGS);
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+            std::string ntoken = trim(token);
+            std::transform(ntoken.begin(), ntoken.end(), ntoken.begin(), ::tolower);
+            if (ntoken == "sequential") {
+                result.sequential = true;
+            } else if (ntoken == "populate") {
+                result.populate = true;
+            } else if (ntoken == "willneed") {
+                result.willneed = true;
+            } else if (ntoken == "dontneed") {
+                result.dontneed = true;
+            }
+        }
+    }
+    return result;
+}
+
+class MmapWrapperImpl : public MmapWrapper {
+public:
+    MmapWrapperImpl(void* data, size_t size, int fd)
+        : MmapWrapper(data, size), fd_(fd) {}
+
+    ~MmapWrapperImpl() override {
+#ifdef __linux__
+        auto cfg_flags = get_mmap_flags();
+
+        // Drop the kernel pagecache pages for this file. madvise(DONTNEED)
+        // alone only unmaps from the process address space; pagecache
+        // entries persist (`free` reports them as buff/cache and the OOM
+        // killer doesn't touch them, but they ARE counted against
+        // overcommit and can starve other allocations on tight-RAM
+        // systems). posix_fadvise(POSIX_FADV_DONTNEED) is the documented
+        // way to evict pagecache for a specific fd's pages.
+        if (cfg_flags.dontneed) {
+            madvise(data_, size_, MADV_DONTNEED);
+            posix_fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED);
+        }
+#endif
+        munmap(data_, size_);
+        close(fd_);
+    }
+
+private:
+    int fd_;
+};
+
+std::unique_ptr<MmapWrapper> MmapWrapper::create(const std::string& filename, bool writable) {
     int file_descriptor = open(filename.c_str(), O_RDONLY);
     if (file_descriptor == -1) {
         return nullptr;
     }
 
+    auto cfg_flags = get_mmap_flags();
+
     int mmap_flags = MAP_PRIVATE;
 
 #ifdef __linux__
-    // performance flags used by llama.cpp
-    // posix_fadvise(file_descriptor, 0, 0, POSIX_FADV_SEQUENTIAL);
-    // mmap_flags |= MAP_POPULATE;
+    // Sequential access hint helps the kernel read-ahead efficiently and
+    // also encourages eviction of already-read pages (the kernel keeps
+    // a smaller working set when this is set).
+    if (cfg_flags.sequential) {
+        posix_fadvise(file_descriptor, 0, 0, POSIX_FADV_SEQUENTIAL);
+    }
+    if (cfg_flags.populate) {
+        mmap_flags |= MAP_POPULATE;
+    }
 #endif
 
     struct stat sb;
@@ -209,20 +268,27 @@ std::unique_ptr<MmapWrapper> MmapWrapper::create(const std::string& filename) {
 
     size_t file_size = sb.st_size;
 
-    void* mapped_data = mmap(NULL, file_size, PROT_READ, mmap_flags, file_descriptor, 0);
+    if (file_size == 0) {
+        close(file_descriptor);
+        return nullptr;
+    }
 
-    close(file_descriptor);
+    int mmap_prot = PROT_READ | (writable ? PROT_WRITE : 0);
+
+    void* mapped_data = mmap(nullptr, file_size, mmap_prot, mmap_flags, file_descriptor, 0);
 
     if (mapped_data == MAP_FAILED) {
+        close(file_descriptor);
         return nullptr;
     }
 
 #ifdef __linux__
-    // performance flags used by llama.cpp
-    // posix_madvise(mapped_data, file_size, POSIX_MADV_WILLNEED);
+    if (cfg_flags.willneed) {
+        posix_madvise(mapped_data, file_size, POSIX_MADV_WILLNEED);
+    }
 #endif
 
-    return std::make_unique<MmapWrapperImpl>(mapped_data, file_size);
+    return std::make_unique<MmapWrapperImpl>(mapped_data, file_size, file_descriptor);
 }
 
 #endif
@@ -284,46 +350,64 @@ bool sd_preview_denoised             = true;
 bool sd_preview_noisy                = false;
 
 std::u32string utf8_to_utf32(const std::string& utf8_str) {
-    std::u32string result;
-    size_t i = 0;
-    while (i < utf8_str.size()) {
-        char32_t cp = 0;
+    // Manual UTF-8 -> UTF-32 decode (std::wstring_convert is deprecated in C++17).
+    std::u32string utf32_str;
+    size_t i      = 0;
+    const size_t n = utf8_str.size();
+    while (i < n) {
         unsigned char c = static_cast<unsigned char>(utf8_str[i]);
-        int len = 0;
-        if (c < 0x80) { cp = c; len = 1; }
-        else if ((c & 0xE0) == 0xC0) { cp = c & 0x1F; len = 2; }
-        else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; len = 3; }
-        else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; len = 4; }
-        else { ++i; continue; }
-        for (int j = 1; j < len && i + j < utf8_str.size(); ++j) {
-            cp = (cp << 6) | (static_cast<unsigned char>(utf8_str[i + j]) & 0x3F);
+        char32_t cp;
+        int extra;
+        if (c < 0x80) {
+            cp    = c;
+            extra = 0;
+        } else if ((c >> 5) == 0x6) {
+            cp    = c & 0x1F;
+            extra = 1;
+        } else if ((c >> 4) == 0xE) {
+            cp    = c & 0x0F;
+            extra = 2;
+        } else if ((c >> 3) == 0x1E) {
+            cp    = c & 0x07;
+            extra = 3;
+        } else {
+            // Invalid lead byte; skip it.
+            ++i;
+            continue;
         }
-        result.push_back(cp);
-        i += len;
+        if (i + extra >= n) {
+            break;  // truncated sequence
+        }
+        for (int k = 1; k <= extra; ++k) {
+            cp = (cp << 6) | (static_cast<unsigned char>(utf8_str[i + k]) & 0x3F);
+        }
+        utf32_str.push_back(cp);
+        i += extra + 1;
     }
-    return result;
+    return utf32_str;
 }
 
 std::string utf32_to_utf8(const std::u32string& utf32_str) {
-    std::string result;
+    // Manual UTF-32 -> UTF-8 encode (std::wstring_convert is deprecated in C++17).
+    std::string utf8_str;
     for (char32_t cp : utf32_str) {
         if (cp < 0x80) {
-            result.push_back(static_cast<char>(cp));
+            utf8_str.push_back(static_cast<char>(cp));
         } else if (cp < 0x800) {
-            result.push_back(static_cast<char>(0xC0 | (cp >> 6)));
-            result.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+            utf8_str.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+            utf8_str.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
         } else if (cp < 0x10000) {
-            result.push_back(static_cast<char>(0xE0 | (cp >> 12)));
-            result.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
-            result.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+            utf8_str.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+            utf8_str.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            utf8_str.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
         } else {
-            result.push_back(static_cast<char>(0xF0 | (cp >> 18)));
-            result.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
-            result.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
-            result.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+            utf8_str.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+            utf8_str.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+            utf8_str.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            utf8_str.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
         }
     }
-    return result;
+    return utf8_str;
 }
 
 std::u32string unicode_value_to_utf32(int unicode_value) {
@@ -376,17 +460,95 @@ std::vector<std::string> split_string(const std::string& str, char delimiter) {
     return result;
 }
 
-void pretty_progress(int step, int steps, float time) {
-    if (sd_progress_cb) {
-        sd_progress_cb(step, steps, time, sd_progress_cb_data);
-        return;
+KeyValueArgs parse_key_value_args(const char* args, const char* context) {
+    KeyValueArgs pairs;
+
+    if (args == nullptr || args[0] == '\0') {
+        return pairs;
     }
-    if (step == 0) {
-        return;
+
+    std::string raw(args);
+    size_t start = 0;
+    for (size_t pos = 0; pos <= raw.size(); ++pos) {
+        if (pos != raw.size() && raw[pos] != ',' && raw[pos] != ';') {
+            continue;
+        }
+
+        std::string token = trim(raw.substr(start, pos - start));
+        if (!token.empty()) {
+            size_t eq = token.find('=');
+            if (eq == std::string::npos) {
+                const char* log_context = context ? context : "key=value arg";
+                LOG_WARN("ignoring malformed %s '%s'", log_context, token.c_str());
+            } else {
+                std::string key   = trim(token.substr(0, eq));
+                std::string value = trim(token.substr(eq + 1));
+                pairs.emplace_back(std::move(key), std::move(value));
+            }
+        }
+
+        start = pos + 1;
     }
+
+    return pairs;
+}
+
+KeyValueArgs parse_key_value_args(const std::string& args, const char* context) {
+    return parse_key_value_args(args.c_str(), context);
+}
+
+bool parse_strict_float(const std::string& text, float& value) {
+    try {
+        size_t consumed = 0;
+        float parsed    = std::stof(text, &consumed);
+        if (!trim(text.substr(consumed)).empty()) {
+            return false;
+        }
+        value = parsed;
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+bool parse_strict_int(const std::string& text, int& value) {
+    try {
+        size_t consumed = 0;
+        int parsed      = std::stoi(text, &consumed);
+        if (!trim(text.substr(consumed)).empty()) {
+            return false;
+        }
+        value = parsed;
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+bool parse_strict_bool(const std::string& text, bool& value) {
+    std::string lowered = trim(text);
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+
+    if (lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on") {
+        value = true;
+        return true;
+    }
+    if (lowered == "0" || lowered == "false" || lowered == "no" || lowered == "off") {
+        value = false;
+        return true;
+    }
+    return false;
+}
+
+static std::string build_progress_bar(int step, int steps) {
     std::string progress = "  |";
     int max_progress     = 50;
-    int32_t current      = (int32_t)(step * 1.f * max_progress / steps);
+    int32_t current      = 0;
+    if (steps > 0) {
+        current = (int32_t)(step * 1.f * max_progress / steps);
+    }
     for (int i = 0; i < 50; i++) {
         if (i > current) {
             progress += " ";
@@ -397,20 +559,57 @@ void pretty_progress(int step, int steps, float time) {
         }
     }
     progress += "|";
+    return progress;
+}
 
-    const char* lf   = (step == steps ? "\n" : "");
+static void print_progress_line(int step, int steps, const std::string& speed_text) {
+    if (step == 0) {
+        return;
+    }
+    std::string progress = build_progress_bar(step, steps);
+    const char* lf       = (step == steps ? "\n" : "");
+    r_ggml_printf("\r%s %i/%i - %s\033[K%s", progress.c_str(), step, steps, speed_text.c_str(), lf);
+    r_ggml_fflush(NULL);  // for linux
+}
+
+void pretty_progress(int step, int steps, float time) {
+    if (sd_progress_cb) {
+        sd_progress_cb(step, steps, time, sd_progress_cb_data);
+        return;
+    }
+    if (step == 0) {
+        return;
+    }
     const char* unit = "s/it";
     float speed      = time;
     if (speed < 1.0f && speed > 0.f) {
         speed = 1.0f / speed;
         unit  = "it/s";
     }
-#ifdef GGML_R_PACKAGE
-    r_ggml_printf("\r%s %i/%i - %.2f%s%s", progress.c_str(), step, steps, speed, unit, lf);
-#else
-    r_ggml_printf("\r%s %i/%i - %.2f%s\033[K%s", progress.c_str(), step, steps, speed, unit, lf);
-    r_ggml_fflush(NULL);  // for linux
-#endif
+    print_progress_line(step, steps, sd_format("%.2f%s", speed, unit));
+}
+
+void pretty_bytes_progress(int step, int steps, uint64_t bytes_processed, float elapsed_seconds) {
+    if (sd_progress_cb) {
+        float time = elapsed_seconds / (step + 1e-6f);
+        sd_progress_cb(step, steps, time, sd_progress_cb_data);
+        return;
+    }
+    if (step == 0) {
+        return;
+    }
+
+    double bytes_per_second = 0.0;
+    if (elapsed_seconds > 0.0f) {
+        bytes_per_second = bytes_processed / (double)elapsed_seconds;
+    }
+
+    double speed_mb = bytes_per_second / (1024.0 * 1024.0);
+    if (speed_mb >= 1024.0) {
+        print_progress_line(step, steps, sd_format("%.2fGB/s", speed_mb / 1024.0));
+    } else {
+        print_progress_line(step, steps, sd_format("%.2fMB/s", speed_mb));
+    }
 }
 
 std::string ltrim(const std::string& s) {
@@ -501,179 +700,87 @@ sd_progress_cb_t sd_get_progress_callback() {
 void* sd_get_progress_callback_data() {
     return sd_progress_cb_data;
 }
-const char* sd_get_system_info() {
-    static char buffer[1024];
-    std::stringstream ss;
-    ss << "System Info: \n";
-    ss << "    SSE3 = " << ggml_cpu_has_sse3() << " | ";
-    ss << "    AVX = " << ggml_cpu_has_avx() << " | ";
-    ss << "    AVX2 = " << ggml_cpu_has_avx2() << " | ";
-    ss << "    AVX512 = " << ggml_cpu_has_avx512() << " | ";
-    ss << "    AVX512_VBMI = " << ggml_cpu_has_avx512_vbmi() << " | ";
-    ss << "    AVX512_VNNI = " << ggml_cpu_has_avx512_vnni() << " | ";
-    ss << "    FMA = " << ggml_cpu_has_fma() << " | ";
-    ss << "    NEON = " << ggml_cpu_has_neon() << " | ";
-    ss << "    ARM_FMA = " << ggml_cpu_has_arm_fma() << " | ";
-    ss << "    F16C = " << ggml_cpu_has_f16c() << " | ";
-    ss << "    FP16_VA = " << ggml_cpu_has_fp16_va() << " | ";
-    ss << "    WASM_SIMD = " << ggml_cpu_has_wasm_simd() << " | ";
-    ss << "    VSX = " << ggml_cpu_has_vsx() << " | ";
-    snprintf(buffer, sizeof(buffer), "%s", ss.str().c_str());
-    return buffer;
+
+sd_image_t tensor_to_sd_image(const sd::Tensor<float>& tensor, int frame_index) {
+    const auto& shape = tensor.shape();
+    GGML_ASSERT(shape.size() == 4 || shape.size() == 5);
+    int width     = static_cast<int>(shape[0]);
+    int height    = static_cast<int>(shape[1]);
+    int channel   = static_cast<int>(shape[shape.size() == 5 ? 3 : 2]);
+    uint8_t* data = (uint8_t*)malloc(static_cast<size_t>(width * height * channel));
+    GGML_ASSERT(data != nullptr);
+    preprocessing_tensor_frame_to_sd_image(tensor, frame_index, data);
+    return {
+        static_cast<uint32_t>(width),
+        static_cast<uint32_t>(height),
+        static_cast<uint32_t>(channel),
+        data,
+    };
 }
 
-sd_image_f32_t sd_image_t_to_sd_image_f32_t(sd_image_t image) {
-    sd_image_f32_t converted_image;
-    converted_image.width   = image.width;
-    converted_image.height  = image.height;
-    converted_image.channel = image.channel;
-
-    // Allocate memory for float data
-    converted_image.data = (float*)malloc(image.width * image.height * image.channel * sizeof(float));
-
-    for (uint32_t i = 0; i < image.width * image.height * image.channel; i++) {
-        // Convert uint8_t to float
-        converted_image.data[i] = (float)image.data[i];
-    }
-
-    return converted_image;
-}
-
-// Function to perform double linear interpolation
-float interpolate(float v1, float v2, float v3, float v4, float x_ratio, float y_ratio) {
-    return v1 * (1 - x_ratio) * (1 - y_ratio) + v2 * x_ratio * (1 - y_ratio) + v3 * (1 - x_ratio) * y_ratio + v4 * x_ratio * y_ratio;
-}
-
-sd_image_f32_t resize_sd_image_f32_t(sd_image_f32_t image, int target_width, int target_height) {
-    sd_image_f32_t resized_image;
-    resized_image.width   = target_width;
-    resized_image.height  = target_height;
-    resized_image.channel = image.channel;
-
-    // Allocate memory for resized float data
-    resized_image.data = (float*)malloc(target_width * target_height * image.channel * sizeof(float));
-
-    for (int y = 0; y < target_height; y++) {
-        for (int x = 0; x < target_width; x++) {
-            float original_x = (float)x * image.width / target_width;
-            float original_y = (float)y * image.height / target_height;
-
-            uint32_t x1 = (uint32_t)original_x;
-            uint32_t y1 = (uint32_t)original_y;
-            uint32_t x2 = std::min(x1 + 1, image.width - 1);
-            uint32_t y2 = std::min(y1 + 1, image.height - 1);
-
-            for (uint32_t k = 0; k < image.channel; k++) {
-                float v1 = *(image.data + y1 * image.width * image.channel + x1 * image.channel + k);
-                float v2 = *(image.data + y1 * image.width * image.channel + x2 * image.channel + k);
-                float v3 = *(image.data + y2 * image.width * image.channel + x1 * image.channel + k);
-                float v4 = *(image.data + y2 * image.width * image.channel + x2 * image.channel + k);
-
-                float x_ratio = original_x - x1;
-                float y_ratio = original_y - y1;
-
-                float value = interpolate(v1, v2, v3, v4, x_ratio, y_ratio);
-
-                *(resized_image.data + y * target_width * image.channel + x * image.channel + k) = value;
+sd::Tensor<float> sd_image_to_tensor(sd_image_t image,
+                                     int target_width,
+                                     int target_height,
+                                     bool scale) {
+    sd::Tensor<float> tensor = sd::zeros<float>({static_cast<int64_t>(image.width),
+                                                 static_cast<int64_t>(image.height),
+                                                 static_cast<int64_t>(image.channel),
+                                                 1});
+    for (uint32_t iw = 0; iw < image.width; ++iw) {
+        for (uint32_t ih = 0; ih < image.height; ++ih) {
+            for (uint32_t ic = 0; ic < image.channel; ++ic) {
+                tensor.index(iw, ih, ic, 0) = sd_image_get_f32(image, iw, ih, ic, scale);
             }
         }
     }
-
-    return resized_image;
-}
-
-void normalize_sd_image_f32_t(sd_image_f32_t image, float means[3], float stds[3]) {
-    for (uint32_t y = 0; y < image.height; y++) {
-        for (uint32_t x = 0; x < image.width; x++) {
-            for (uint32_t k = 0; k < image.channel; k++) {
-                int index         = (y * image.width + x) * image.channel + k;
-                image.data[index] = (image.data[index] - means[k]) / stds[k];
-            }
-        }
+    if (target_width >= 0 && target_height >= 0 &&
+        (tensor.shape()[0] != target_width || tensor.shape()[1] != target_height)) {
+        tensor = sd::ops::interpolate(tensor,
+                                      {target_width,
+                                       target_height,
+                                       tensor.shape()[2],
+                                       tensor.shape()[3]});
     }
+    return tensor;
 }
 
 // Constants for means and std
 float means[3] = {0.48145466f, 0.4578275f, 0.40821073f};
 float stds[3]  = {0.26862954f, 0.26130258f, 0.27577711f};
 
-// Function to clip and preprocess sd_image_f32_t
-sd_image_f32_t clip_preprocess(sd_image_f32_t image, int target_width, int target_height) {
-    float width_scale  = (float)target_width / image.width;
-    float height_scale = (float)target_height / image.height;
+sd::Tensor<float> clip_preprocess(const sd::Tensor<float>& image, int target_width, int target_height) {
+    GGML_ASSERT(image.dim() == 4);
+    GGML_ASSERT(image.shape()[2] == 3);
+    GGML_ASSERT(image.shape()[3] == 1);
+    GGML_ASSERT(target_width > 0 && target_height > 0);
 
-    float scale = std::fmax(width_scale, height_scale);
+    float width_scale  = static_cast<float>(target_width) / static_cast<float>(image.shape()[0]);
+    float height_scale = static_cast<float>(target_height) / static_cast<float>(image.shape()[1]);
+    float scale        = std::fmax(width_scale, height_scale);
 
-    // Interpolation
-    int resized_width   = (int)(scale * image.width);
-    int resized_height  = (int)(scale * image.height);
-    float* resized_data = (float*)malloc(resized_width * resized_height * image.channel * sizeof(float));
+    int64_t resized_width  = static_cast<int64_t>(scale * static_cast<float>(image.shape()[0]));
+    int64_t resized_height = static_cast<int64_t>(scale * static_cast<float>(image.shape()[1]));
 
-    for (int y = 0; y < resized_height; y++) {
-        for (int x = 0; x < resized_width; x++) {
-            float original_x = (float)x * image.width / resized_width;
-            float original_y = (float)y * image.height / resized_height;
+    sd::Tensor<float> resized = sd::ops::interpolate(
+        image,
+        {resized_width, resized_height, image.shape()[2], image.shape()[3]});
 
-            uint32_t x1 = (uint32_t)original_x;
-            uint32_t y1 = (uint32_t)original_y;
-            uint32_t x2 = std::min(x1 + 1, image.width - 1);
-            uint32_t y2 = std::min(y1 + 1, image.height - 1);
+    int64_t h_offset = std::max<int64_t>((resized_height - target_height) / 2, 0);
+    int64_t w_offset = std::max<int64_t>((resized_width - target_width) / 2, 0);
 
-            for (uint32_t k = 0; k < image.channel; k++) {
-                float v1 = *(image.data + y1 * image.width * image.channel + x1 * image.channel + k);
-                float v2 = *(image.data + y1 * image.width * image.channel + x2 * image.channel + k);
-                float v3 = *(image.data + y2 * image.width * image.channel + x1 * image.channel + k);
-                float v4 = *(image.data + y2 * image.width * image.channel + x2 * image.channel + k);
-
-                float x_ratio = original_x - x1;
-                float y_ratio = original_y - y1;
-
-                float value = interpolate(v1, v2, v3, v4, x_ratio, y_ratio);
-
-                *(resized_data + y * resized_width * image.channel + x * image.channel + k) = value;
+    sd::Tensor<float> cropped({target_width, target_height, image.shape()[2], image.shape()[3]});
+    for (int64_t y = 0; y < target_height; ++y) {
+        for (int64_t x = 0; x < target_width; ++x) {
+            for (int64_t c = 0; c < image.shape()[2]; ++c) {
+                cropped.index(x, y, c, 0) = resized.index(x + w_offset, y + h_offset, c, 0);
             }
         }
     }
 
-    // Clip and preprocess
-    int h_offset = std::max((int)(resized_height - target_height) / 2, 0);
-    int w_offset = std::max((int)(resized_width - target_width) / 2, 0);
-
-    sd_image_f32_t result;
-    result.width   = target_width;
-    result.height  = target_height;
-    result.channel = image.channel;
-    result.data    = (float*)malloc(target_height * target_width * image.channel * sizeof(float));
-
-    for (uint32_t k = 0; k < image.channel; k++) {
-        for (uint32_t i = 0; i < result.height; i++) {
-            for (uint32_t j = 0; j < result.width; j++) {
-                int src_y = std::min(static_cast<int>(i + h_offset), resized_height - 1);
-                int src_x = std::min(static_cast<int>(j + w_offset), resized_width - 1);
-                *(result.data + i * result.width * image.channel + j * image.channel + k) =
-                    fmin(fmax(*(resized_data + src_y * resized_width * image.channel + src_x * image.channel + k), 0.0f), 255.0f) / 255.0f;
-            }
-        }
-    }
-
-    // Free allocated memory
-    free(resized_data);
-
-    // Normalize
-    for (uint32_t k = 0; k < image.channel; k++) {
-        for (uint32_t i = 0; i < result.height; i++) {
-            for (uint32_t j = 0; j < result.width; j++) {
-                // *(result.data + i * size * image.channel + j * image.channel + k) = 0.5f;
-                int offset  = i * result.width * image.channel + j * image.channel + k;
-                float value = *(result.data + offset);
-                value       = (value - means[k]) / stds[k];
-                // value = 0.5f;
-                *(result.data + offset) = value;
-            }
-        }
-    }
-
-    return result;
+    sd::Tensor<float> normalized = sd::ops::clamp(cropped, 0.0f, 1.0f);
+    sd::Tensor<float> mean({1, 1, 3, 1}, {means[0], means[1], means[2]});
+    sd::Tensor<float> std({1, 1, 3, 1}, {stds[0], stds[1], stds[2]});
+    return (normalized - mean) / std;
 }
 
 // Ref: https://github.com/AUTOMATIC1111/stable-diffusion-webui/blob/cad87bf4e3e0b0a759afa94e933527c3123d59bc/modules/prompt_parser.py#L345
@@ -785,4 +892,137 @@ std::vector<std::pair<std::string, float>> parse_prompt_attention(const std::str
     }
 
     return res;
+}
+
+static size_t get_utf8_char_len(char c) {
+    unsigned char uc = static_cast<unsigned char>(c);
+    if ((uc & 0x80) == 0) {
+        return 1;
+    }
+    if ((uc & 0xE0) == 0xC0) {
+        return 2;
+    }
+    if ((uc & 0xF0) == 0xE0) {
+        return 3;
+    }
+    if ((uc & 0xF8) == 0xF0) {
+        return 4;
+    }
+    return 1;
+}
+
+static bool is_ascii_alpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+static bool starts_with_at(const std::string& text, size_t pos, const std::string& needle) {
+    return pos + needle.size() <= text.size() && text.compare(pos, needle.size(), needle) == 0;
+}
+
+static bool is_word_internal_apostrophe(const std::string& text, size_t pos) {
+    return pos > 0 && pos + 1 < text.size() &&
+           is_ascii_alpha(text[pos - 1]) && is_ascii_alpha(text[pos + 1]);
+}
+
+static std::vector<std::pair<std::string, bool>> split_quotation(const std::string& text) {
+    static const std::vector<std::pair<std::string, std::string>> quote_pairs = {
+        {"'", "'"},
+        {"\"", "\""},
+        {"\xE2\x80\x98", "\xE2\x80\x99"},
+        {"\xE2\x80\x9C", "\xE2\x80\x9D"},
+    };
+
+    std::vector<std::pair<std::string, bool>> result;
+    size_t segment_start = 0;
+    size_t i             = 0;
+
+    auto push_segment = [&](size_t begin, size_t end, bool matched) {
+        if (end > begin) {
+            result.emplace_back(text.substr(begin, end - begin), matched);
+        }
+    };
+
+    while (i < text.size()) {
+        bool matched_quote = false;
+        for (const auto& quote_pair : quote_pairs) {
+            const std::string& open_quote  = quote_pair.first;
+            const std::string& close_quote = quote_pair.second;
+            if (!starts_with_at(text, i, open_quote)) {
+                continue;
+            }
+            if (open_quote == "'" && is_word_internal_apostrophe(text, i)) {
+                continue;
+            }
+
+            size_t search_pos = i + open_quote.size();
+            size_t close_pos  = std::string::npos;
+            bool invalid      = false;
+            while (search_pos < text.size()) {
+                if (open_quote != close_quote && starts_with_at(text, search_pos, open_quote)) {
+                    invalid = true;
+                    break;
+                }
+                if (starts_with_at(text, search_pos, close_quote)) {
+                    if (close_quote == "'" && is_word_internal_apostrophe(text, search_pos)) {
+                        search_pos += close_quote.size();
+                        continue;
+                    }
+                    close_pos = search_pos;
+                    break;
+                }
+
+                size_t char_len = get_utf8_char_len(text[search_pos]);
+                if (search_pos + char_len > text.size()) {
+                    char_len = 1;
+                }
+                search_pos += char_len;
+            }
+            if (invalid || close_pos == std::string::npos) {
+                continue;
+            }
+
+            size_t quote_start = i;
+            push_segment(segment_start, quote_start, false);
+            i = close_pos + close_quote.size();
+            push_segment(quote_start, i, true);
+            segment_start = i;
+            matched_quote = true;
+            break;
+        }
+        if (!matched_quote) {
+            size_t char_len = get_utf8_char_len(text[i]);
+            if (i + char_len > text.size()) {
+                char_len = 1;
+            }
+            i += char_len;
+        }
+    }
+
+    push_segment(segment_start, text.size(), false);
+    return result;
+}
+
+std::vector<std::pair<std::string, float>> split_quotation_attention(
+    const std::vector<std::pair<std::string, float>>& parsed_attention) {
+    std::vector<std::pair<std::string, float>> result;
+    for (const auto& item : parsed_attention) {
+        const std::string& text = item.first;
+        float weight            = item.second;
+        for (const auto& part : split_quotation(text)) {
+            if (part.second) {
+                size_t i = 0;
+                while (i < part.first.size()) {
+                    size_t char_len = get_utf8_char_len(part.first[i]);
+                    if (i + char_len > part.first.size()) {
+                        char_len = 1;
+                    }
+                    result.emplace_back(part.first.substr(i, char_len), weight);
+                    i += char_len;
+                }
+            } else {
+                result.emplace_back(part.first, weight);
+            }
+        }
+    }
+    return result;
 }

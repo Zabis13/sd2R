@@ -5,7 +5,7 @@
 # Set SD2R_TEST_MODEL env var, or defaults to SD 1.5 in standard location
 test_model_path <- function() {
   p <- Sys.getenv("SD2R_TEST_MODEL", unset = "")
-  if (!nzchar(p)) p <- "/mnt/Data2/DS_projects/sd_models/sdxs-512-tinySDdistilled_Q8_0.gguf"
+  if (!nzchar(p)) p <- "/mnt/Data2/DS_projects/sd_models/v1-5-pruned-emaonly.safetensors"
   p
 }
 

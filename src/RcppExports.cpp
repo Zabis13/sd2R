@@ -20,6 +20,16 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// sd_meta_backend_available
+bool sd_meta_backend_available();
+RcppExport SEXP _sd2R_sd_meta_backend_available() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(sd_meta_backend_available());
+    return rcpp_result_gen;
+END_RCPP
+}
 // sd_clear_progress_file
 void sd_clear_progress_file();
 RcppExport SEXP _sd2R_sd_clear_progress_file() {
@@ -488,6 +498,7 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_sd2R_sd_set_progress_file", (DL_FUNC) &_sd2R_sd_set_progress_file, 1},
+    {"_sd2R_sd_meta_backend_available", (DL_FUNC) &_sd2R_sd_meta_backend_available, 0},
     {"_sd2R_sd_clear_progress_file", (DL_FUNC) &_sd2R_sd_clear_progress_file, 0},
     {"_sd2R_sd_set_preview_dump", (DL_FUNC) &_sd2R_sd_set_preview_dump, 5},
     {"_sd2R_sd_clear_preview_dump", (DL_FUNC) &_sd2R_sd_clear_preview_dump, 0},

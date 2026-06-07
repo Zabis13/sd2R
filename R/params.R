@@ -52,6 +52,7 @@ sd_default_params <- function() {
     scheduler        = SCHEDULER$DISCRETE,
     clip_skip        = -1L,
     eta              = 0.0,
+    flow_shift       = NULL,
     hr_strength      = 0.4,
     vae_mode         = "auto",
     vae_tile_size    = 64L,

@@ -5,7 +5,7 @@
 \alias{SAMPLE_METHOD}
 \title{Sampling methods}
 \format{
-An object of class \code{list} of length 12.
+An object of class \code{list} of length 18.
 }
 \usage{
 SAMPLE_METHOD

@@ -327,8 +327,14 @@ sd_list_models <- function() {
 #' loaded, otherwise creates a new \code{\link{sd_ctx}}. Additional
 #' arguments override registry defaults.
 #'
-#' If loading fails due to insufficient VRAM, automatically unloads the
-#' least recently used model and retries.
+#' Before loading, the estimated VRAM need (on-disk weight size times a
+#' headroom factor plus a reserve) is compared against free GPU memory; if it
+#' would not fit, least-recently-used models are unloaded first. If loading
+#' still fails due to insufficient VRAM, the LRU model is unloaded and the load
+#' is retried once. VRAM estimation/eviction is skipped when GPU memory cannot
+#' be queried (e.g. CPU backend). Tunable via environment variables
+#' \code{SD2R_VRAM_HEADROOM} (default 1.2) and \code{SD2R_VRAM_RESERVE_MB}
+#' (default 512).
 #'
 #' @param id Model identifier from registry
 #' @param ... Additional arguments passed to \code{\link{sd_ctx}}, overriding
@@ -396,7 +402,12 @@ sd_load_model <- function(id, ...) {
   user_args <- list(...)
   ctx_args <- modifyList(ctx_args, user_args)
 
-  # Try to load, with LRU eviction on failure
+  # Proactively evict LRU models if the new one likely won't fit in free VRAM.
+  # Runs before sd_ctx() because on Vulkan an OOM can crash the process outright,
+  # so the reactive tryCatch fallback below may never get a chance to run.
+  .mm_ensure_vram(entry)
+
+  # Try to load, with LRU eviction on failure (reactive fallback)
   ctx <- tryCatch(do.call(sd_ctx, ctx_args), error = function(e) {
     # If memory error, try evicting LRU model
     if (length(.mm_env$contexts) > 0L &&
@@ -641,4 +652,75 @@ sd_scan_models <- function(dir, overwrite = FALSE, recursive = FALSE) {
   if (length(.mm_env$last_used) == 0L) return(NULL)
   times <- vapply(.mm_env$last_used, as.numeric, numeric(1))
   names(times)[which.min(times)]
+}
+
+# ---------------------------------------------------------------------------
+# Proactive VRAM management
+# ---------------------------------------------------------------------------
+
+# Headroom multiplier applied to on-disk weight size to estimate peak VRAM,
+# plus an absolute reserve (compute buffers, fragmentation). Tunable via env.
+.mm_vram_headroom <- function() {
+  as.numeric(Sys.getenv("SD2R_VRAM_HEADROOM", "1.2"))
+}
+.mm_vram_reserve_bytes <- function() {
+  as.numeric(Sys.getenv("SD2R_VRAM_RESERVE_MB", "512")) * 1024^2
+}
+
+# Sum on-disk size of a registry entry's weight files. Returns 0 if unknown.
+.mm_model_size_bytes <- function(entry) {
+  paths <- unlist(entry$paths, use.names = FALSE)
+  paths <- paths[!is.na(paths) & nzchar(paths)]
+  if (length(paths) == 0L) return(0)
+  sizes <- file.size(paths)            # NA for missing files
+  sum(sizes[!is.na(sizes)])
+}
+
+# Free VRAM (bytes) on a device, or NULL if it cannot be queried
+# (no Vulkan / CPU backend) — callers must treat NULL as "unknown, skip check".
+.mm_free_vram_bytes <- function(device = NULL) {
+  if (is.null(device)) {
+    device <- as.integer(Sys.getenv("SD_VK_DEVICE", "0"))
+  }
+  tryCatch({
+    mem <- ggmlR::ggml_vulkan_device_memory(device)
+    if (is.null(mem$free)) NULL else as.numeric(mem$free)
+  }, error = function(e) NULL)
+}
+
+# Proactively make room for a model BEFORE loading it: while estimated need
+# exceeds free VRAM, evict the LRU loaded model. Returns invisibly TRUE if it
+# believes the model will fit (or VRAM is unknown), FALSE if room could not be
+# freed. Never throws — loading still proceeds and the reactive OOM fallback in
+# sd_load_model() remains as a second line of defence.
+.mm_ensure_vram <- function(entry, device = NULL, verbose = TRUE) {
+  need <- .mm_model_size_bytes(entry) * .mm_vram_headroom() +
+    .mm_vram_reserve_bytes()
+  if (need <= .mm_vram_reserve_bytes()) {
+    # No usable size estimate (files missing / sizes 0) — can't reason, skip.
+    return(invisible(TRUE))
+  }
+
+  repeat {
+    free <- .mm_free_vram_bytes(device)
+    if (is.null(free)) return(invisible(TRUE))   # unknown VRAM — don't block
+    if (free >= need) return(invisible(TRUE))    # fits
+
+    lru_id <- .find_lru()
+    if (is.null(lru_id)) {
+      # Nothing left to evict and still short on VRAM.
+      if (verbose) {
+        message(sprintf(
+          "Insufficient VRAM: model needs ~%.1f GB, %.1f GB free, nothing to evict.",
+          need / 1e9, free / 1e9))
+      }
+      return(invisible(FALSE))
+    }
+    if (verbose) {
+      message(sprintf(
+        "Freeing VRAM for new model (~%.1f GB needed, %.1f GB free): unloading '%s' (LRU)",
+        need / 1e9, free / 1e9, lru_id))
+    }
+    sd_unload_model(lru_id)
+  }
 }

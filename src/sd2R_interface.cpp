@@ -8,6 +8,7 @@
 #include <atomic>
 #include <mutex>
 #include "sd/stable-diffusion.h"
+#include "sd/sd2r_meta_backend.hpp"  // sd2R: meta backend (multi-GPU tensor split, behind a flag)
 
 // --- Verbose flag: controls log and progress output ---
 static bool r_sd_verbose = false;
@@ -189,6 +190,18 @@ static void r_sd_progress_callback(int step, int steps, float time, void* data) 
 // [[Rcpp::export]]
 void sd_set_progress_file(std::string path) {
     r_sd_progress_file = path;
+}
+
+// Whether the meta backend (multi-GPU tensor split) was compiled into this
+// build, i.e. the ggml_backend_meta_device symbol was present in libggml.a at
+// configure time. Lets the R layer warn when meta_backend=TRUE is unsupported.
+// [[Rcpp::export]]
+bool sd_meta_backend_available() {
+#if defined(SD2R_HAVE_META_BACKEND)
+    return true;
+#else
+    return false;
+#endif
 }
 
 // [[Rcpp::export]]
@@ -374,6 +387,10 @@ SEXP sd_create_context(Rcpp::List params) {
         p.lora_apply_mode = static_cast<lora_apply_mode_t>(Rcpp::as<int>(params["lora_apply_mode"]));
     if (params.containsElementNamed("offload_params_to_cpu"))
         p.offload_params_to_cpu = Rcpp::as<bool>(params["offload_params_to_cpu"]);
+    if (params.containsElementNamed("max_vram"))
+        p.max_vram = Rcpp::as<float>(params["max_vram"]);
+    if (params.containsElementNamed("stream_layers"))
+        p.stream_layers = Rcpp::as<bool>(params["stream_layers"]);
     if (params.containsElementNamed("enable_mmap"))
         p.enable_mmap = Rcpp::as<bool>(params["enable_mmap"]);
     if (params.containsElementNamed("keep_clip_on_cpu"))
@@ -388,8 +405,6 @@ SEXP sd_create_context(Rcpp::List params) {
         p.diffusion_conv_direct = Rcpp::as<bool>(params["diffusion_conv_direct"]);
     if (params.containsElementNamed("diffusion_flash_attn"))
         p.diffusion_flash_attn = Rcpp::as<bool>(params["diffusion_flash_attn"]);
-    if (params.containsElementNamed("flow_shift"))
-        p.flow_shift = Rcpp::as<float>(params["flow_shift"]);
     if (params.containsElementNamed("diffusion_gpu_device"))
         p.diffusion_gpu_device = Rcpp::as<int>(params["diffusion_gpu_device"]);
     if (params.containsElementNamed("clip_gpu_device"))
@@ -397,8 +412,17 @@ SEXP sd_create_context(Rcpp::List params) {
     if (params.containsElementNamed("vae_gpu_device"))
         p.vae_gpu_device = Rcpp::as<int>(params["vae_gpu_device"]);
 
+    // sd2R "second path": generate via the meta backend (on/off flag).
+    // Default off => normal single-backend path. If meta is unavailable in ggmlR,
+    // C++ falls back to the normal path (see get_or_build_diffusion_meta_backend).
+    bool meta_on = params.containsElementNamed("meta_backend") &&
+                   !Rf_isNull(params["meta_backend"]) &&
+                   Rcpp::as<bool>(params["meta_backend"]);
+    sd2r::meta::set_meta_backend(meta_on);
+
     sd_ctx_t* ctx = new_sd_ctx(&p);
     if (!ctx) {
+        sd2r::meta::set_meta_backend(false);
         Rcpp::stop("Failed to create stable diffusion context");
     }
 
@@ -513,6 +537,10 @@ bool sd_create_context_async(Rcpp::List params) {
         p.lora_apply_mode = static_cast<lora_apply_mode_t>(Rcpp::as<int>(params["lora_apply_mode"]));
     if (params.containsElementNamed("offload_params_to_cpu"))
         p.offload_params_to_cpu = Rcpp::as<bool>(params["offload_params_to_cpu"]);
+    if (params.containsElementNamed("max_vram"))
+        p.max_vram = Rcpp::as<float>(params["max_vram"]);
+    if (params.containsElementNamed("stream_layers"))
+        p.stream_layers = Rcpp::as<bool>(params["stream_layers"]);
     if (params.containsElementNamed("enable_mmap"))
         p.enable_mmap = Rcpp::as<bool>(params["enable_mmap"]);
     if (params.containsElementNamed("keep_clip_on_cpu"))
@@ -527,14 +555,19 @@ bool sd_create_context_async(Rcpp::List params) {
         p.diffusion_conv_direct = Rcpp::as<bool>(params["diffusion_conv_direct"]);
     if (params.containsElementNamed("diffusion_flash_attn"))
         p.diffusion_flash_attn = Rcpp::as<bool>(params["diffusion_flash_attn"]);
-    if (params.containsElementNamed("flow_shift"))
-        p.flow_shift = Rcpp::as<float>(params["flow_shift"]);
     if (params.containsElementNamed("diffusion_gpu_device"))
         p.diffusion_gpu_device = Rcpp::as<int>(params["diffusion_gpu_device"]);
     if (params.containsElementNamed("clip_gpu_device"))
         p.clip_gpu_device = Rcpp::as<int>(params["clip_gpu_device"]);
     if (params.containsElementNamed("vae_gpu_device"))
         p.vae_gpu_device = Rcpp::as<int>(params["vae_gpu_device"]);
+
+    // sd2R "second path": generate via the meta backend (on/off flag).
+    // The global flag is read in the worker thread at new_sd_ctx → set it BEFORE launch.
+    bool meta_on = params.containsElementNamed("meta_backend") &&
+                   !Rf_isNull(params["meta_backend"]) &&
+                   Rcpp::as<bool>(params["meta_backend"]);
+    sd2r::meta::set_meta_backend(meta_on);
 
     // Launch
     if (g_async_ctx.worker.joinable()) g_async_ctx.worker.join();
@@ -744,7 +777,7 @@ SEXP sd_sample_cpp(SEXP ctx_sexp, SEXP init_latent, SEXP noise,
         sp.custom_sigmas_count = (int)sig.size();
     }
 
-    sd_tensor x0 = sd_sample(xptr.get(), init_t, noise_t, c, uc, &sp, (float)strength);
+    sd_tensor x0 = sd_sample_loop(xptr.get(), init_t, noise_t, c, uc, &sp, (float)strength);
     SEXP out = sd_tensor_to_r(x0);
 
     sd_tensor_free(&init_t);
@@ -884,6 +917,8 @@ Rcpp::List sd_generate_image(SEXP ctx_sexp, Rcpp::List params) {
         p.sample_params.guidance.txt_cfg = Rcpp::as<float>(params["cfg_scale"]);
     if (params.containsElementNamed("eta"))
         p.sample_params.eta = Rcpp::as<float>(params["eta"]);
+    if (params.containsElementNamed("flow_shift"))
+        p.sample_params.flow_shift = Rcpp::as<float>(params["flow_shift"]);
 
     // VAE tiling
     if (params.containsElementNamed("vae_tiling") && Rcpp::as<bool>(params["vae_tiling"])) {
@@ -922,10 +957,15 @@ Rcpp::List sd_generate_image(SEXP ctx_sexp, Rcpp::List params) {
     }
 
     // Init image (for img2img)
-    // Note: mask_image is left empty (sd_image_t{}) — stable-diffusion.cpp
-    // creates an all-white mask at the correct aligned size if none is provided.
     if (params.containsElementNamed("init_image") && !Rf_isNull(params["init_image"])) {
         p.init_image = r_to_sd_image(Rcpp::as<Rcpp::List>(params["init_image"]));
+    }
+
+    // Mask image (for inpaint). 1-channel grayscale: white (255) = generate,
+    // black (0) = keep original. If absent, stable-diffusion.cpp creates an
+    // all-white mask at the correct aligned size (plain img2img).
+    if (params.containsElementNamed("mask_image") && !Rf_isNull(params["mask_image"])) {
+        p.mask_image = r_to_sd_image(Rcpp::as<Rcpp::List>(params["mask_image"]));
     }
 
     // Control image
@@ -1021,7 +1061,8 @@ SEXP sd_create_upscaler(std::string esrgan_path, int n_threads = 0,
                          bool offload_params_to_cpu = false,
                          bool direct = false, int tile_size = 0) {
     upscaler_ctx_t* ctx = new_upscaler_ctx(
-        esrgan_path.c_str(), offload_params_to_cpu, direct, n_threads, tile_size
+        esrgan_path.c_str(), offload_params_to_cpu, direct, n_threads, tile_size,
+        nullptr, nullptr  // backend / params_backend: use defaults
     );
     if (!ctx) {
         Rcpp::stop("Failed to create upscaler context");
@@ -1076,6 +1117,7 @@ struct AsyncGenState {
     std::string prompt_str;
     std::string neg_prompt_str;
     std::vector<uint8_t> init_image_data;
+    std::vector<uint8_t> mask_image_data;
     std::vector<uint8_t> control_image_data;
     int batch_count = 1;
 
@@ -1197,6 +1239,7 @@ bool sd_generate_async(SEXP ctx_sexp, Rcpp::List params) {
     g_async.running.store(false);
     g_async.error_msg.clear();
     g_async.init_image_data.clear();
+    g_async.mask_image_data.clear();
     g_async.control_image_data.clear();
     g_async.prompt_str.clear();
     g_async.neg_prompt_str.clear();
@@ -1254,6 +1297,8 @@ bool sd_generate_async(SEXP ctx_sexp, Rcpp::List params) {
         p.sample_params.guidance.txt_cfg = Rcpp::as<float>(params["cfg_scale"]);
     if (params.containsElementNamed("eta"))
         p.sample_params.eta = Rcpp::as<float>(params["eta"]);
+    if (params.containsElementNamed("flow_shift"))
+        p.sample_params.flow_shift = Rcpp::as<float>(params["flow_shift"]);
 
     // VAE tiling
     if (params.containsElementNamed("vae_tiling") && Rcpp::as<bool>(params["vae_tiling"])) {
@@ -1296,6 +1341,17 @@ bool sd_generate_async(SEXP ctx_sexp, Rcpp::List params) {
         Rcpp::RawVector data = Rcpp::as<Rcpp::RawVector>(img_list["data"]);
         g_async.init_image_data.assign(data.begin(), data.end());
         p.init_image.data = g_async.init_image_data.data();
+    }
+
+    // Mask image (for inpaint) — deep copy. 1-channel grayscale; white = generate.
+    if (params.containsElementNamed("mask_image") && !Rf_isNull(params["mask_image"])) {
+        Rcpp::List img_list = Rcpp::as<Rcpp::List>(params["mask_image"]);
+        p.mask_image.width = Rcpp::as<uint32_t>(img_list["width"]);
+        p.mask_image.height = Rcpp::as<uint32_t>(img_list["height"]);
+        p.mask_image.channel = Rcpp::as<uint32_t>(img_list["channel"]);
+        Rcpp::RawVector data = Rcpp::as<Rcpp::RawVector>(img_list["data"]);
+        g_async.mask_image_data.assign(data.begin(), data.end());
+        p.mask_image.data = g_async.mask_image_data.data();
     }
 
     // Control image — deep copy

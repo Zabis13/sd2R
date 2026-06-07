@@ -20,6 +20,7 @@ sd_generate_multi_gpu(
   vae_path = NULL,
   clip_l_path = NULL,
   t5xxl_path = NULL,
+  llm_path = NULL,
   ...
 )
 }
@@ -55,6 +56,8 @@ sd_generate_multi_gpu(
 \item{clip_l_path}{Path to CLIP-L model}
 
 \item{t5xxl_path}{Path to T5-XXL model}
+
+\item{llm_path}{Path to an LLM text encoder (Qwen3 / Mistral), e.g. FLUX.2}
 
 \item{...}{Additional arguments passed to \code{\link{sd_generate}}}
 }

@@ -18,6 +18,7 @@ sd_txt2img(
   scheduler = SCHEDULER$DISCRETE,
   clip_skip = -1L,
   eta = 0,
+  flow_shift = NULL,
   control_image = NULL,
   control_strength = 0.9,
   vae_mode = "auto",
@@ -57,6 +58,10 @@ sd_txt2img(
 \item{clip_skip}{Number of CLIP layers to skip (-1 = auto)}
 
 \item{eta}{Eta parameter for DDIM-like samplers}
+
+\item{flow_shift}{Flow shift for flow-matching models (Flux, SD3). \code{NULL}
+(default) lets the model pick an architecture-specific value; set a numeric
+value to override. Ignored by non-flow models.}
 
 \item{control_image}{Optional control image for ControlNet (sd_image format)}
 

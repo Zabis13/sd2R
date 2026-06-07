@@ -22,6 +22,7 @@ sd_img2img_tiled(
   clip_skip = -1L,
   strength = 0.5,
   eta = 0,
+  flow_shift = NULL,
   vae_mode = "auto",
   vae_auto_threshold = 1048576L,
   vae_tile_size = 64L,
@@ -65,6 +66,10 @@ to load from file.}
 \item{strength}{Denoising strength (0.0 = no change, 1.0 = full denoise, default 0.75)}
 
 \item{eta}{Eta parameter for DDIM-like samplers}
+
+\item{flow_shift}{Flow shift for flow-matching models (Flux, SD3). \code{NULL}
+(default) lets the model pick an architecture-specific value; set a numeric
+value to override. Ignored by non-flow models.}
 
 \item{vae_mode}{VAE processing mode: \code{"normal"} (no tiling),
 \code{"tiled"} (always tile), or \code{"auto"} (VRAM-aware: queries free

@@ -8,10 +8,7 @@
 ^\.claude$
 ^TODO\.md$
 ^cran-comments\.md$
-^src/sd/vocab\.hpp$
-^src/sd/vocab_mistral\.hpp$
-^src/sd/vocab_qwen\.hpp$
-^src/sd/vocab_umt5\.hpp$
+^src/sd/tokenizers/vocab/.*\.hpp$
 ^CRAN-SUBMISSION$
 ^CLAUDE\.md$
 ^LICENSE\.md$

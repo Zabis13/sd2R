@@ -10,10 +10,9 @@ src/**/*.so
 src/**/*.dll
 src/Makevars
 src/Makevars.win
-src/sd/vocab.hpp
-src/sd/vocab_mistral.hpp
-src/sd/vocab_qwen.hpp
-src/sd/vocab_umt5.hpp
+# Tokenizer vocab/merges — downloaded by configure from the assets-v2 release,
+# not tracked in git (see configure: VOCAB_FILES).
+src/sd/tokenizers/vocab/*.hpp
 sd2R.Rcheck/
 dev/
 TODO.md

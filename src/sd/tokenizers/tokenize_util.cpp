@@ -1,5 +1,5 @@
 #include <algorithm>
-// #include <iostream>  // removed for CRAN (std::cout symbol)
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -919,15 +919,21 @@ std::vector<std::string> token_split(const std::string& text) {
 
         // `\s*[\r\n]+|\s+(?!\S)|\s+`
         if (is_space(cp)) {
-            std::string token = codepoint_to_utf8(cp);
-            ++i;
+            std::string token;
+            bool saw_new_line = false;
 
             while (i < cps.size() && is_space(cps[i])) {
                 token += codepoint_to_utf8(cps[i]);
-                ++i;
+
                 if (cps[i] == U'\r' || cps[i] == U'\n') {
-                    break;
+                    saw_new_line = true;
+                } else {
+                    if (saw_new_line) {
+                        break;
+                    }
                 }
+
+                ++i;
             }
 
             tokens.push_back(token);
@@ -976,7 +982,7 @@ std::vector<std::string> split_with_special_tokens(
 }
 
 // int main() {
-//     std::string text = "I'm testing C++ token_split function. 你好，世界! 123";
+//     std::string text = "I'm testing C++ token_split function. Hello world 123";
 //     auto tokens = token_split(text);
 
 //     for (const auto& t : tokens) {

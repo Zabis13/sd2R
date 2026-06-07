@@ -1,9 +1,12 @@
 #!/bin/sh
 # Clean compiled objects and shared library
 
-rm -f src/*.o src/*.so src/*.dll src/*.dylib
-rm -f src/sd/*.o
-rm -f src/sd/thirdparty/*.o
+# Recurse: sources live in src/ and several src/sd/* subdirectories, so a
+# fixed list of directories goes stale whenever a new subdir is added.
+find src -name '*.o'     -delete 2>/dev/null
+find src -name '*.so'    -delete 2>/dev/null
+find src -name '*.dll'   -delete 2>/dev/null
+find src -name '*.dylib' -delete 2>/dev/null
 
 # Remove generated files created by configure
 rm -f src/Makevars

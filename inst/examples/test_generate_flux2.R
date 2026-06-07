@@ -78,7 +78,7 @@ imgs_1 <- sd_generate(
   ctx,
   prompt        = "a cat sitting on a chair, oil painting",
   width         = 768L, height = 768L,
-  sample_steps  = 10L, seed = 42L,
+  sample_steps  = 4L, seed = 42L,
   sample_method = SAMPLE_METHOD$EULER,
   scheduler     = SCHEDULER$DISCRETE,
   vae_mode      = "tiled"
@@ -102,7 +102,7 @@ spices, pedestrians in casual clothing, neon signs in Chinese characters, wet
 pavement reflections, steam rising from food carts, photorealistic, 8k,
 hyperdetailed, street photography style, golden hour lighting",
   width         = 1024L, height = 1024L,
-  sample_steps  = 10L, seed = 42L,
+  sample_steps  = 4L, seed = 42L,
   sample_method = SAMPLE_METHOD$EULER,
   scheduler     = SCHEDULER$DISCRETE,
   vae_mode      = "tiled"
@@ -124,7 +124,7 @@ imgs_3 <- sd_generate(
 hanging red lanterns, neon signs, steam from cooking, photorealistic, 8k,
 cinematic, shot on Sony A7R, f/8, sharp focus, high detail",
   width         = 2048L, height = 1024L,
-  sample_steps  = 10L, seed = 42L,
+  sample_steps  = 4L, seed = 42L,
   hr_strength   = 0.4,
   sample_method = SAMPLE_METHOD$EULER,
   scheduler     = SCHEDULER$DISCRETE
@@ -145,7 +145,7 @@ imgs_4 <- sd_generate(
   prompt        = "a cat sitting on a chair, oil painting, masterpiece",
   init_image    = imgs_1[[1]],
   strength      = 0.4,
-  sample_steps  = 10L, seed = 42L,
+  sample_steps  = 4L, seed = 42L,
   sample_method = SAMPLE_METHOD$EULER,
   scheduler     = SCHEDULER$DISCRETE,
   vae_mode      = "tiled"
@@ -169,7 +169,7 @@ takoyaki stall with sizzling batter, narrow alley lined with izakayas, steam
 from hot food, wet cobblestones, neon signs, photorealistic, 8k, hyperdetailed,
 street photography, shot on Sony A7R, f/8, sharp focus",
   width         = 1024L, height = 1024L,
-  sample_steps  = 10L, seed = 42L,
+  sample_steps  = 4L, seed = 42L,
   sample_method = SAMPLE_METHOD$EULER,
   scheduler     = SCHEDULER$DISCRETE,
   vae_mode      = "tiled"

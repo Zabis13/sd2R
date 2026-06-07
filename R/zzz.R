@@ -18,33 +18,41 @@ RNG_TYPE <- list(
 #' Sampling methods
 #' @export
 SAMPLE_METHOD <- list(
-  EULER       = 0L,
-  EULER_A     = 1L,
-  HEUN        = 2L,
-  DPM2        = 3L,
-  DPMPP_2S_A  = 4L,
-  DPMPP_2M    = 5L,
-  DPMPP_2M_V2 = 6L,
-  IPNDM       = 7L,
-  IPNDM_V     = 8L,
-  LCM         = 9L,
-  DDIM        = 10L,
-  TCD         = 11L
+  EULER          = 0L,
+  EULER_A        = 1L,
+  HEUN           = 2L,
+  DPM2           = 3L,
+  DPMPP_2S_A     = 4L,
+  DPMPP_2M       = 5L,
+  DPMPP_2M_V2    = 6L,
+  IPNDM          = 7L,
+  IPNDM_V        = 8L,
+  LCM            = 9L,
+  DDIM           = 10L,
+  TCD            = 11L,
+  RES_MULTISTEP  = 12L,
+  RES_2S         = 13L,
+  ER_SDE         = 14L,
+  EULER_CFG_PP   = 15L,
+  EULER_A_CFG_PP = 16L,
+  EULER_GE       = 17L
 )
 
 #' Schedulers
 #' @export
 SCHEDULER <- list(
-  DISCRETE    = 0L,
-  KARRAS      = 1L,
-  EXPONENTIAL = 2L,
-  AYS         = 3L,
-  GITS        = 4L,
-  SGM_UNIFORM = 5L,
-  SIMPLE      = 6L,
-  SMOOTHSTEP  = 7L,
-  KL_OPTIMAL  = 8L,
-  LCM         = 9L
+  DISCRETE     = 0L,
+  KARRAS       = 1L,
+  EXPONENTIAL  = 2L,
+  AYS          = 3L,
+  GITS         = 4L,
+  SGM_UNIFORM  = 5L,
+  SIMPLE       = 6L,
+  SMOOTHSTEP   = 7L,
+  KL_OPTIMAL   = 8L,
+  LCM          = 9L,
+  BONG_TANGENT = 10L,
+  LTX2         = 11L
 )
 
 #' Preview decode modes
@@ -82,14 +90,34 @@ SD_TYPE <- list(
   Q5_0    = 6L,
   Q5_1    = 7L,
   Q8_0    = 8L,
+  Q8_1    = 9L,
   Q2_K    = 10L,
   Q3_K    = 11L,
   Q4_K    = 12L,
   Q5_K    = 13L,
   Q6_K    = 14L,
   Q8_K    = 15L,
+  IQ2_XXS = 16L,
+  IQ2_XS  = 17L,
+  IQ3_XXS = 18L,
+  IQ1_S   = 19L,
+  IQ4_NL  = 20L,
+  IQ3_S   = 21L,
+  IQ2_S   = 22L,
+  IQ4_XS  = 23L,
+  I8      = 24L,
+  I16     = 25L,
+  I32     = 26L,
+  I64     = 27L,
+  F64     = 28L,
+  IQ1_M   = 29L,
   BF16    = 30L,
-  COUNT   = 40L
+  TQ1_0   = 34L,
+  TQ2_0   = 35L,
+  MXFP4   = 39L,
+  NVFP4   = 40L,
+  Q1_0    = 41L,
+  COUNT   = 42L
 )
 
 #' LoRA apply modes

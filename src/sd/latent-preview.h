@@ -1,6 +1,140 @@
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include "ggml.h"
+#include "tensor.hpp"
+
+const float ltxav_latent_rgb_proj[128][3] = {
+    {-0.0293802f, -0.0362516f, -0.0291386f},
+    {0.0117735f, 0.0223435f, 0.018856f},
+    {0.00922335f, 0.0145666f, 0.0038772f},
+    {0.0227299f, 0.0109122f, 0.0131384f},
+    {0.00192413f, 0.0024648f, 0.00689245f},
+    {-0.0105576f, -0.0135933f, -0.00873841f},
+    {-0.0310222f, -0.0396358f, -0.0408445f},
+    {0.0149737f, 0.0316323f, 0.03415f},
+    {0.0027752f, 0.00814889f, 0.0108575f},
+    {-0.000678017f, -0.00180589f, -0.0161684f},
+    {0.0153964f, 0.0159774f, 0.0186479f},
+    {-0.0222799f, -0.0202068f, -0.0181082f},
+    {0.0128696f, 0.00754416f, -0.00673279f},
+    {0.0142729f, 0.00448099f, -0.00193934f},
+    {-0.014066f, -0.0193755f, -0.0160104f},
+    {-0.0176785f, -0.015903f, -0.0152621f},
+    {0.0307381f, 0.0292082f, 0.0328668f},
+    {0.0332928f, 0.0368629f, 0.0440893f},
+    {0.0186304f, 0.0124069f, 0.0160734f},
+    {0.00477787f, -0.00315658f, -0.000145702f},
+    {0.0183099f, 0.0122593f, 0.00599732f},
+    {-0.0194551f, -0.0183924f, -0.0147465f},
+    {0.0025732f, 0.00442582f, 0.0173176f},
+    {-0.0169423f, -0.0293863f, -0.0225908f},
+    {-0.021228f, -0.0265094f, -0.0253049f},
+    {0.0327111f, 0.0187133f, 0.0266184f},
+    {-0.0226425f, -0.0313781f, -0.0414356f},
+    {-0.0163142f, -0.0146144f, -0.0171793f},
+    {0.0192183f, 0.0108411f, 0.00829186f},
+    {-0.032246f, -0.0274846f, -0.0287434f},
+    {0.00345399f, 0.0115567f, 0.015288f},
+    {0.000972292f, 0.00331303f, 0.0110501f},
+    {0.000939494f, -0.00705084f, -0.00979449f},
+    {0.0405155f, 0.0339534f, 0.0419513f},
+    {0.0198596f, 0.0186626f, 0.0213766f},
+    {-0.00982375f, -0.00880439f, -0.00470429f},
+    {-0.0313707f, -0.0258098f, -0.0211663f},
+    {0.0144159f, 0.0117896f, 0.0141573f},
+    {0.0164571f, 0.0149178f, 0.00921599f},
+    {0.0436184f, 0.0346583f, 0.0360647f},
+    {-0.00289744f, -0.000752502f, 0.000675415f},
+    {-0.00621715f, -0.000558851f, 0.0135814f},
+    {-0.00817579f, -0.0113584f, -0.00556793f},
+    {0.00965067f, 0.0178221f, 0.015821f},
+    {0.0211832f, 0.0180827f, 0.0154707f},
+    {-0.00412858f, -0.00374182f, 0.0029568f},
+    {-0.0175603f, -0.0226242f, -0.0279012f},
+    {-0.00437471f, -0.00668329f, 0.000164887f},
+    {-0.0355983f, -0.0419093f, -0.0383065f},
+    {0.0144314f, 0.0192514f, 0.0175639f},
+    {-0.0130693f, -0.00569884f, -0.00341647f},
+    {-0.00184689f, 0.00189034f, -0.00190561f},
+    {0.019457f, 0.00842282f, 0.0123738f},
+    {-0.00477146f, -0.00206932f, 0.00283336f},
+    {-0.0364544f, -0.0256141f, -0.0322336f},
+    {-0.0295634f, -0.0295048f, -0.021057f},
+    {0.0144484f, 0.0191862f, 0.0112445f},
+    {0.0536406f, 0.0582376f, 0.0570966f},
+    {0.0085178f, 0.00748455f, 0.00995162f},
+    {-0.0136637f, -0.0172914f, -0.0195978f},
+    {-0.0339128f, -0.0392692f, -0.0355216f},
+    {0.00612855f, 0.00568303f, -0.00212333f},
+    {-0.0029225f, 0.00668819f, 0.0122131f},
+    {0.00841843f, 0.000181587f, -0.00650644f},
+    {-0.00514432f, 0.0127043f, 0.0168049f},
+    {-0.00997384f, -0.00602262f, -0.0164031f},
+    {0.0233226f, 0.033254f, 0.0307266f},
+    {-0.0110201f, -0.0164169f, -0.0161829f},
+    {-0.0195952f, -0.0177943f, -0.0115377f},
+    {-0.00523918f, -0.00452043f, 0.00267397f},
+    {0.0313464f, 0.0288241f, 0.0262496f},
+    {0.0324018f, 0.0339792f, 0.0312209f},
+    {-0.0163247f, -0.0230503f, -0.0263239f},
+    {0.000420577f, -0.00535659f, -0.00663426f},
+    {-0.012897f, -0.00203767f, -0.000622678f},
+    {-0.0632956f, -0.0651325f, -0.0584479f},
+    {-0.00426634f, -0.0150098f, -0.00719348f},
+    {0.00476109f, 0.00674315f, 0.00895472f},
+    {0.0129384f, 0.0158352f, 0.00963773f},
+    {-0.0333379f, -0.0410522f, -0.0317462f},
+    {0.00344054f, 0.00275915f, 0.00355732f},
+    {0.0209062f, 0.0273453f, 0.0222967f},
+    {0.00827287f, 0.00223045f, 0.00325844f},
+    {-0.0149132f, -0.0183973f, -0.0199781f},
+    {-0.0100786f, -0.0103681f, -0.00218224f},
+    {-0.00791409f, -0.00405153f, -0.00599893f},
+    {0.0176126f, 0.00618342f, -6.6569e-05f},
+    {0.00942486f, -0.00206494f, -0.00580324f},
+    {0.00678093f, -0.00291742f, -0.000921195f},
+    {-0.0221992f, -0.00483162f, -0.000848514f},
+    {-0.0151587f, -0.0157166f, -0.0107302f},
+    {0.00909646f, 0.0171985f, 0.0169785f},
+    {0.0127224f, 0.0170612f, 0.0303428f},
+    {0.0196562f, 0.00212451f, 0.0127744f},
+    {0.0233013f, 0.0228994f, 0.0108387f},
+    {0.00520761f, 0.00992992f, 0.0066267f},
+    {-3.77736e-05f, 0.00460229f, -0.00475132f},
+    {-0.0311763f, -0.0453566f, -0.0486901f},
+    {0.0195798f, 0.0281246f, 0.0180102f},
+    {-0.0174149f, -0.0240867f, -0.0188785f},
+    {0.000104658f, 0.00659008f, 0.0144594f},
+    {-0.00311086f, -0.0241426f, -0.0244164f},
+    {0.0336462f, 0.0305173f, 0.0331101f},
+    {0.0613625f, 0.066561f, 0.0610198f},
+    {-0.0286757f, -0.0325401f, -0.0338036f},
+    {0.0141534f, 0.0188266f, 0.0253059f},
+    {-0.00548197f, -0.00170198f, 0.00561745f},
+    {-0.0117872f, -0.00763218f, -0.0145037f},
+    {-0.0253304f, -0.0245217f, -0.0144905f},
+    {-0.00393624f, 0.00350048f, 0.00765561f},
+    {0.0113625f, 0.00561576f, -0.0113672f},
+    {-0.0301278f, -0.0261472f, -0.0301903f},
+    {0.016863f, 0.0173781f, 0.0170916f},
+    {-0.00495108f, 0.00686749f, 0.00282767f},
+    {0.00125409f, -0.00378072f, -0.00264117f},
+    {-0.00264001f, -0.00529772f, -0.0113109f},
+    {-0.054888f, -0.0575461f, -0.0509146f},
+    {-0.019442f, -0.0232916f, -0.0258637f},
+    {0.0133362f, 0.0161808f, 0.00917951f},
+    {-0.0349002f, -0.0372642f, -0.0466206f},
+    {-0.00216926f, 0.00208738f, 0.00766492f},
+    {0.0268528f, 0.0301179f, 0.0228579f},
+    {0.0226176f, 0.021536f, 0.023152f},
+    {-0.0110646f, -0.00511349f, -0.0137346f},
+    {-0.0098424f, -0.00218176f, 0.00414545f},
+    {0.00200216f, 0.00441732f, -0.0136515f},
+    {0.00695946f, 0.00313109f, -0.00379435f},
+    {0.0188377f, 0.0144059f, 0.0229724f},
+};
+float ltxav_latent_rgb_bias[3] = {0.043849f, 0.0201085f, 0.0150286f};
 
 const float wan_21_latent_rgb_proj[16][3] = {
     {0.015123f, -0.148418f, 0.479828f},
@@ -163,9 +297,7 @@ const float sd_latent_rgb_proj[4][3] = {
     {-0.178022f, -0.200862f, -0.678514f}};
 float sd_latent_rgb_bias[3] = {-0.017478f, -0.055834f, -0.105825f};
 
-void preview_latent_video(uint8_t* buffer, struct ggml_tensor* latents, const float (*latent_rgb_proj)[3], const float latent_rgb_bias[3], int patch_size) {
-    size_t buffer_head = 0;
-
+void preview_latent_video(uint8_t* buffer, ggml_tensor* latents, const float (*latent_rgb_proj)[3], const float latent_rgb_bias[3], int patch_size) {
     uint32_t latent_width  = static_cast<uint32_t>(latents->ne[0]);
     uint32_t latent_height = static_cast<uint32_t>(latents->ne[1]);
     uint32_t dim           = static_cast<uint32_t>(latents->ne[ggml_n_dims(latents) - 1]);
@@ -224,6 +356,70 @@ void preview_latent_video(uint8_t* buffer, struct ggml_tensor* latents, const fl
                 r = r >= 0 ? r <= 1 ? r : 1 : 0;
                 g = g >= 0 ? g <= 1 ? g : 1 : 0;
                 b = b >= 0 ? b <= 1 ? b : 1 : 0;
+
+                buffer[pixel_id * 3 + 0] = (uint8_t)(r * 255);
+                buffer[pixel_id * 3 + 1] = (uint8_t)(g * 255);
+                buffer[pixel_id * 3 + 2] = (uint8_t)(b * 255);
+            }
+        }
+    }
+}
+
+static inline bool preview_latent_tensor_is_video(const sd::Tensor<float>& latents) {
+    return latents.dim() == 5;
+}
+
+void preview_latent_video(uint8_t* buffer, const sd::Tensor<float>& latents, const float (*latent_rgb_proj)[3], const float latent_rgb_bias[3], int patch_size) {
+    uint32_t latent_width  = static_cast<uint32_t>(latents.shape()[0]);
+    uint32_t latent_height = static_cast<uint32_t>(latents.shape()[1]);
+    bool is_video          = preview_latent_tensor_is_video(latents);
+    uint32_t frames        = is_video ? static_cast<uint32_t>(latents.shape()[2]) : 1;
+    uint32_t dim           = is_video ? static_cast<uint32_t>(latents.shape()[3]) : static_cast<uint32_t>(latents.shape()[2]);
+
+    uint32_t rgb_width     = latent_width * patch_size;
+    uint32_t rgb_height    = latent_height * patch_size;
+    uint32_t unpatched_dim = dim / (patch_size * patch_size);
+
+    for (uint32_t k = 0; k < frames; k++) {
+        for (uint32_t rgb_x = 0; rgb_x < rgb_width; rgb_x++) {
+            for (uint32_t rgb_y = 0; rgb_y < rgb_height; rgb_y++) {
+                uint32_t latent_x = rgb_x / patch_size;
+                uint32_t latent_y = rgb_y / patch_size;
+
+                uint32_t channel_offset = 0;
+                if (patch_size > 1) {
+                    channel_offset = ((rgb_y % patch_size) * patch_size + (rgb_x % patch_size));
+                }
+
+                size_t pixel_id   = k * rgb_width * rgb_height + rgb_y * rgb_width + rgb_x;
+                auto latent_value = [&](uint32_t latent_channel) -> float {
+                    return is_video
+                               ? latents.values()[latent_x + latent_width * (latent_y + latent_height * (k + frames * latent_channel))]
+                               : latents.values()[latent_x + latent_width * (latent_y + latent_height * latent_channel)];
+                };
+
+                float r = 0.f, g = 0.f, b = 0.f;
+                if (latent_rgb_proj != nullptr) {
+                    for (uint32_t d = 0; d < unpatched_dim; d++) {
+                        uint32_t latent_channel = d * patch_size * patch_size + channel_offset;
+                        float value             = latent_value(latent_channel);
+                        r += value * latent_rgb_proj[d][0];
+                        g += value * latent_rgb_proj[d][1];
+                        b += value * latent_rgb_proj[d][2];
+                    }
+                } else {
+                    r = latent_value(0);
+                    g = latent_value(1);
+                    b = latent_value(2);
+                }
+                if (latent_rgb_bias != nullptr) {
+                    r += latent_rgb_bias[0];
+                    g += latent_rgb_bias[1];
+                    b += latent_rgb_bias[2];
+                }
+                r = std::min(1.0f, std::max(0.0f, r * .5f + .5f));
+                g = std::min(1.0f, std::max(0.0f, g * .5f + .5f));
+                b = std::min(1.0f, std::max(0.0f, b * .5f + .5f));
 
                 buffer[pixel_id * 3 + 0] = (uint8_t)(r * 255);
                 buffer[pixel_id * 3 + 1] = (uint8_t)(g * 255);
