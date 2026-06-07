@@ -10,6 +10,30 @@
 #include "sd/stable-diffusion.h"
 #include "sd/sd2r_meta_backend.hpp"  // sd2R: meta backend (multi-GPU tensor split, behind a flag)
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
+// Atomically replace `dst` with `src` (a temp file just written). POSIX
+// rename() overwrites an existing target atomically, but Win32 std::rename()
+// FAILS when the target exists — which silently froze the live preview after
+// the first frame on Windows. Use MoveFileExA(MOVEFILE_REPLACE_EXISTING) there.
+// Returns true on success.
+static bool sd_atomic_replace(const char* src, const char* dst) {
+#ifdef _WIN32
+    return MoveFileExA(src, dst,
+                       MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+    return std::rename(src, dst) == 0;
+#endif
+}
+
 // --- Verbose flag: controls log and progress output ---
 static bool r_sd_verbose = false;
 
@@ -243,7 +267,9 @@ static void r_sd_preview_callback(int step, int frame_count, sd_image_t* frames,
         std::fwrite(rgb, 1, 3, fp);
     }
     std::fclose(fp);
-    std::rename(tmp.c_str(), r_sd_preview_path.c_str());
+    // Atomic replace works cross-platform (POSIX rename / Win32 MoveFileEx).
+    // On failure the stale frame is left in place; the next step retries.
+    sd_atomic_replace(tmp.c_str(), r_sd_preview_path.c_str());
 }
 
 // [[Rcpp::export]]

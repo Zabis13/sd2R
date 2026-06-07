@@ -283,6 +283,8 @@ ui <- fluidPage(
       # GPU info
       h4("GPU"),
       uiOutput("gpu_info"),
+      actionButton("gpu_caps", "GPU caps", class = "btn-default btn-sm",
+                   style = "margin: 6px 0 4px 0; width: 100%;"),
 
       # Model
       h4("Model"),
@@ -374,7 +376,9 @@ server <- function(input, output, session) {
     loading_model = FALSE,
     status_msg = "",
     progress_trigger = NULL,
-    image_trigger = NULL
+    image_trigger = NULL,
+    show_caps = FALSE,    # toggle: GPU caps text replaces the image pane
+    caps_text = ""        # captured output of the Vulkan caps inspector
   )
 
   # Non-reactive state for use in later() callbacks
@@ -870,8 +874,91 @@ server <- function(input, output, session) {
   # Display result. While generating with live preview on, show the latest
   # preview frame (small latent-projection image, scaled up with pixelation so
   # it reads as a draft); once done, the final image replaces it.
+  # --- Vulkan capabilities inspector (ported from ggmlR vulkan_caps.R) -------
+  # Prints the same report into a string. Used by the "GPU caps" toggle to show
+  # coopmat / flash-attention / bf16 support — the key signals for diffusion
+  # speed (a missing coopmat1_fa_support means flash-attn silently falls back).
+  collect_vulkan_caps <- function() {
+    capture.output({
+      cat("=== Vulkan Device Capabilities ===\n\n")
+      if (!ggmlR::ggml_vulkan_available()) {
+        cat("Vulkan: NOT COMPILED\n")
+        cat("  Reinstall ggmlR with libvulkan-dev + glslc.\n")
+        return(invisible())
+      }
+      cat("Vulkan: compiled OK\n")
+      n <- ggmlR::ggml_vulkan_device_count()
+      cat("Devices found:", n, "\n\n")
+      if (n == 0) {
+        cat("No Vulkan devices. Check driver installation.\n")
+        return(invisible())
+      }
+      for (i in seq_len(n)) {
+        idx  <- i - 1L
+        desc <- ggmlR::ggml_vulkan_device_description(idx)
+        mem  <- ggmlR::ggml_vulkan_device_memory(idx)
+        caps <- ggmlR::ggml_vulkan_device_caps(idx)
+        cat(sprintf("Device [%d]: %s\n", idx, desc))
+        cat(sprintf("  Memory : %.2f GB free / %.2f GB total\n",
+                    mem$free / 1e9, mem$total / 1e9))
+        cat("\n  --- Capabilities ---\n")
+        cat(sprintf("  arch               : %s\n", caps$arch))
+        cat(sprintf("  fp16               : %s   (fast inference)\n",
+                    if (caps$fp16) "YES" else "NO"))
+        cat(sprintf("  bf16               : %s   (Flux/SD3 native BF16)\n",
+                    if (caps$bf16) "YES" else "NO"))
+        cat(sprintf("  integer_dot_product: %s   (Q4/Q8 GEMM)\n",
+                    if (caps$integer_dot_product) "YES" else "NO"))
+        cat(sprintf("  coopmat_support    : %s   (fast GEMM kernels)\n",
+                    if (caps$coopmat_support) "YES" else "NO"))
+        cat(sprintf("  coopmat1_fa_support: %s   (flash-attention path)\n",
+                    if (caps$coopmat1_fa_support) "YES" else "NO"))
+        cat(sprintf("  subgroup_size      : %d\n", caps$subgroup_size))
+        if (caps$coopmat_support && caps$coopmat_m > 0) {
+          cat(sprintf("  coopmat tile       : M=%d N=%d K=%d\n",
+                      caps$coopmat_m, caps$coopmat_n, caps$coopmat_k))
+        }
+        cat("\n  --- Verdict ---\n")
+        if (caps$fp16 && caps$coopmat1_fa_support) {
+          cat("  BEST: coopmat flash-attention path active (fastest)\n")
+        } else if (caps$fp16 && caps$coopmat_support) {
+          cat("  GOOD: coopmat GEMM path, NO flash-attention\n")
+          cat("        -> diffusion attention falls back to F32 (slow).\n")
+        } else if (caps$fp16) {
+          cat("  OK:   FP16 active, no coopmat (scalar/subgroup shaders)\n")
+        } else {
+          cat("  WARN: FP32 only - slow, check driver/device support\n")
+        }
+        cat("\n")
+      }
+    }, type = "output")
+  }
+
+  observeEvent(input$gpu_caps, {
+    if (isTRUE(rv$show_caps)) {
+      rv$show_caps <- FALSE          # toggle back to the image
+      updateActionButton(session, "gpu_caps", label = "GPU caps")
+      return()
+    }
+    rv$caps_text <- tryCatch(
+      paste(collect_vulkan_caps(), collapse = "\n"),
+      error = function(e) paste("GPU caps error:", conditionMessage(e)))
+    rv$show_caps <- TRUE
+    updateActionButton(session, "gpu_caps", label = "Hide caps")
+  })
+
   output$result_image <- renderUI({
     rv$image_trigger  # reactive dependency to re-render on new image
+
+    # Caps toggle takes over the whole pane (either caps OR image).
+    if (isTRUE(rv$show_caps)) {
+      return(tags$pre(
+        style = paste("text-align:left; white-space:pre-wrap;",
+                      "background:#1a1a2e; color:#e0e0e0; padding:14px;",
+                      "border-radius:6px; font-size:0.85em; overflow:auto;"),
+        rv$caps_text))
+    }
+
     final <- local_state$last_image
     showing_preview <- rv$generating && !is.null(local_state$preview_image)
     img <- if (showing_preview) local_state$preview_image else final
