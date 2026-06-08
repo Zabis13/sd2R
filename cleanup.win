@@ -2,10 +2,10 @@
 REM Cleanup script for sd2R package (Windows)
 REM Removes compiled objects, shared libraries, and generated files
 
-REM Remove compiled objects and libraries
-del /Q src\*.o src\*.so src\*.dll src\*.dylib 2>NUL
-del /Q src\sd\*.o 2>NUL
-del /Q src\sd\thirdparty\*.o 2>NUL
+REM Recurse: sources live in src\ and several src\sd\* subdirectories
+REM (sd, thirdparty, tokenizers, tokenizers\vocab, ...), so a fixed list of
+REM directories goes stale whenever a new subdir is added. /R walks the tree.
+for /R src %%f in (*.o *.so *.dll *.dylib) do @del /Q "%%f" 2>NUL
 
 REM Remove generated files created by configure
 del /Q src\Makevars 2>NUL
