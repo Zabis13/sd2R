@@ -918,6 +918,50 @@ server <- function(input, output, session) {
           cat(sprintf("  coopmat tile       : M=%d N=%d K=%d\n",
                       caps$coopmat_m, caps$coopmat_n, caps$coopmat_k))
         }
+
+        # --- Direct FLASH_ATTN_EXT support probe -----------------------------
+        # caps$coopmat1_fa_support only reflects the coopmat-v1 FA path. On
+        # Ampere+/Blackwell NVIDIA the FA path is coopmat2, which that flag
+        # does NOT capture. The only honest signal is to build a real
+        # flash_attn_ext node and ask the backend the exact question sd2R asks
+        # per attention layer (ggml_extend.hpp: ggml_backend_supports_op). If
+        # this says NO, diffusion_flash_attn silently falls back to F32 attn.
+        cat("\n  --- Flash-attention op probe (supports_op) ---\n")
+        fa_probe <- tryCatch({
+          # Locate the matching backend device by description.
+          dev <- NULL
+          ndev <- ggmlR::ggml_backend_dev_count()
+          for (d in seq_len(ndev) - 1L) {
+            dd <- ggmlR::ggml_backend_dev_get(d)
+            if (identical(ggmlR::ggml_backend_dev_description(dd), desc)) {
+              dev <- dd; break
+            }
+          }
+          if (is.null(dev)) {
+            cat("  device handle not found via backend registry — skipped\n")
+          } else {
+            # Probe the two head dims that actually occur in diffusion models:
+            # 64 (SD1.x/SDXL/Flux DiT) and 128 (some Flux/SD3 blocks).
+            for (hd in c(64L, 128L)) {
+              pctx <- ggmlR::ggml_init(16L * 1024L * 1024L, no_alloc = TRUE)
+              on.exit(ggmlR::ggml_free(pctx), add = TRUE)
+              n_head <- 8L; seq_len <- 256L
+              q <- ggmlR::ggml_new_tensor_4d(pctx, ggmlR::GGML_TYPE_F16, hd, n_head, seq_len, 1L)
+              k <- ggmlR::ggml_new_tensor_4d(pctx, ggmlR::GGML_TYPE_F16, hd, n_head, seq_len, 1L)
+              v <- ggmlR::ggml_new_tensor_4d(pctx, ggmlR::GGML_TYPE_F16, hd, n_head, seq_len, 1L)
+              fa <- ggmlR::ggml_flash_attn_ext(pctx, q, k, v, NULL,
+                                               1.0 / sqrt(hd), 0.0, 0.0)
+              ok <- ggmlR::ggml_backend_dev_supports_op(dev, fa)
+              cat(sprintf("  FLASH_ATTN_EXT head_dim=%-3d : %s\n",
+                          hd, if (isTRUE(ok)) "SUPPORTED" else "NOT SUPPORTED (fallback)"))
+            }
+          }
+          TRUE
+        }, error = function(e) {
+          cat(sprintf("  probe error: %s\n", conditionMessage(e)))
+          FALSE
+        })
+
         cat("\n  --- Verdict ---\n")
         if (caps$fp16 && caps$coopmat1_fa_support) {
           cat("  BEST: coopmat flash-attention path active (fastest)\n")
