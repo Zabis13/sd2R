@@ -1355,6 +1355,16 @@ __STATIC_INLINE__ ggml_tensor* ggml_ext_attention_ext(ggml_context* ctx,
             mask_in = ggml_cast(ctx, mask_in, GGML_TYPE_F16);
         }
 
+        // The Vulkan flash-attention kernel in ggmlR requires Q in F32
+        // (ggml-vulkan: supports_op rejects non-F32 src0, and the compute
+        // shader asserts q->type == F32). Q arrives here in the model compute
+        // type (usually F16 for diffusion), so without this cast supports_op
+        // returns false and ggml_ext_attention_ext silently falls back to the
+        // slow manual F32 attention path on every layer.
+        if (q_in->type != GGML_TYPE_F32) {
+            q_in = ggml_cast(ctx, q_in, GGML_TYPE_F32);
+        }
+
         auto out = ggml_flash_attn_ext(ctx, q_in, k_in, v_in, mask_in, scale / kv_scale, 0, 0);
         ggml_flash_attn_ext_set_prec(out, GGML_PREC_F32);
         if (kv_scale != 1.0f) {

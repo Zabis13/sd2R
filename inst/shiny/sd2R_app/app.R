@@ -942,11 +942,18 @@ server <- function(input, output, session) {
           } else {
             # Probe the two head dims that actually occur in diffusion models:
             # 64 (SD1.x/SDXL/Flux DiT) and 128 (some Flux/SD3 blocks).
+            #
+            # The tensor types MUST mirror what build_kqv() in ggml_extend.hpp
+            # actually feeds to ggml_flash_attn_ext at runtime, otherwise this
+            # probe lies. The ggmlR Vulkan FA kernel requires Q in F32 and
+            # K/V in F16 (ggml-vulkan supports_op + shader assert q->type==F32).
+            # Building Q as F16 here is what previously made the probe always
+            # report NOT SUPPORTED even though FA was in fact available.
             for (hd in c(64L, 128L)) {
               pctx <- ggmlR::ggml_init(16L * 1024L * 1024L, no_alloc = TRUE)
               on.exit(ggmlR::ggml_free(pctx), add = TRUE)
               n_head <- 8L; seq_len <- 256L
-              q <- ggmlR::ggml_new_tensor_4d(pctx, ggmlR::GGML_TYPE_F16, hd, n_head, seq_len, 1L)
+              q <- ggmlR::ggml_new_tensor_4d(pctx, ggmlR::GGML_TYPE_F32, hd, n_head, seq_len, 1L)
               k <- ggmlR::ggml_new_tensor_4d(pctx, ggmlR::GGML_TYPE_F16, hd, n_head, seq_len, 1L)
               v <- ggmlR::ggml_new_tensor_4d(pctx, ggmlR::GGML_TYPE_F16, hd, n_head, seq_len, 1L)
               fa <- ggmlR::ggml_flash_attn_ext(pctx, q, k, v, NULL,
