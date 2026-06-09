@@ -346,6 +346,13 @@ ui <- fluidPage(
                         value = TRUE)
         )
       ),
+      fluidRow(
+        column(8,
+          checkboxInput("gen_log", "Write generation log (diagnostics)",
+                        value = FALSE)
+        ),
+        column(4, uiOutput("download_log_ui"))
+      ),
 
       hr(),
       fluidRow(
@@ -378,7 +385,8 @@ server <- function(input, output, session) {
     progress_trigger = NULL,
     image_trigger = NULL,
     show_caps = FALSE,    # toggle: GPU caps text replaces the image pane
-    caps_text = ""        # captured output of the Vulkan caps inspector
+    caps_text = "",       # captured output of the Vulkan caps inspector
+    log_ready = NULL      # bumped when a generation log is ready to download
   )
 
   # Non-reactive state for use in later() callbacks
@@ -390,6 +398,7 @@ server <- function(input, output, session) {
   local_state$gen_seed <- 42L
   local_state$ctx <- NULL
   local_state$last_image <- NULL
+  local_state$gen_log_on <- FALSE
 
   # GPU info at startup
   output$gpu_info <- renderUI({
@@ -712,6 +721,33 @@ server <- function(input, output, session) {
     # Set progress file path in C++
     sd2R:::sd_set_progress_file(progress_file)
 
+    # Generation diagnostic log (opt-in). Writes inputs + the device/backend
+    # actually selected + per-stage timings to log_file so we can tell whether
+    # diffusion ran on the discrete GPU or the integrated one.
+    local_state$gen_log_on <- isTRUE(input$gen_log)
+    if (local_state$gen_log_on) {
+      sd2R:::sd_set_log_file(log_file)   # truncates the file
+      sd2R:::sd_set_log_debug(TRUE)      # include Vulkan device list (DEBUG)
+      sd2R:::sd_set_verbose(TRUE)
+      sd2R::sd_profile_start()
+      hdr <- c(
+        "=== Generation ===",
+        sprintf("time:          %s", format(Sys.time())),
+        sprintf("model_type:    %s", input$model_type %||% "?"),
+        sprintf("prompt:        %s", input$prompt %||% ""),
+        sprintf("negative:      %s", input$neg_prompt %||% ""),
+        sprintf("resolution:    %dx%d", dims[1], dims[2]),
+        sprintf("steps:         %s", input$steps),
+        sprintf("sampler:       %s", input$sampler),
+        sprintf("scheduler:     %s", input$scheduler),
+        sprintf("cfg:           %s", input$cfg),
+        sprintf("seed:          %s", input$seed),
+        gen_device_line(local_state$ctx),
+        "",
+        "--- sd.cpp log ---")
+      cat(hdr, file = log_file, sep = "\n", append = TRUE)
+    }
+
     # Build the executable step plan. This mirrors sd_generate()'s routing:
     # cfg auto-1.0 for Flux/Flux.2 (the root cause of the VAE crash with cfg=7),
     # strategy selection (direct / tiled / highres-fix) and VRAM-aware VAE
@@ -768,6 +804,37 @@ server <- function(input, output, session) {
     rv$generating <- FALSE
     sd2R:::sd_clear_progress_file()
     if (preview_active) { sd2R::sd_preview_stop(); preview_active <<- FALSE }
+
+    # Finalize the diagnostic log: stop profiling and append per-stage timings,
+    # then a distilled summary (device / flash-attn / stage wall times).
+    if (isTRUE(local_state$gen_log_on)) {
+      tryCatch({
+        sd2R::sd_profile_stop()
+        prof <- utils::capture.output(
+          print(sd2R::sd_profile_summary(sd2R::sd_profile_get())))
+        cat(c("", "--- Stage timings (profiler) ---", prof),
+            file = log_file, sep = "\n", append = TRUE)
+      }, error = function(e) {
+        cat(c("", paste("[log] profile error:", conditionMessage(e))),
+            file = log_file, sep = "\n", append = TRUE)
+      })
+      if (!is.null(err)) {
+        cat(c("", paste("[log] generation error:", err)),
+            file = log_file, sep = "\n", append = TRUE)
+      }
+      tryCatch({
+        cat(c("", summarize_gen_log(
+                    log_file,
+                    dev_idx = attr(local_state$ctx, "vram_device") %||% 0L)),
+            file = log_file, sep = "\n", append = TRUE)
+      }, error = function(e) {
+        cat(c("", paste("[log] summary error:", conditionMessage(e))),
+            file = log_file, sep = "\n", append = TRUE)
+      })
+      sd2R:::sd_set_log_debug(FALSE)
+      rv$log_ready <- Sys.time()  # reveal the download button
+    }
+
     if (!is.null(err)) {
       rv$status_msg <- paste("Error:", err)
       return(invisible())
@@ -874,6 +941,79 @@ server <- function(input, output, session) {
   # Display result. While generating with live preview on, show the latest
   # preview frame (small latent-projection image, scaled up with pixelation so
   # it reads as a draft); once done, the final image replaces it.
+
+  # --- Device line for the generation log -------------------------------------
+  # The R-side view of which Vulkan device this context targets (index + name +
+  # free/total VRAM). The authoritative C++ pick is the "Selected main device:"
+  # line that sd.cpp logs once at context init; this line makes the device
+  # visible in every generation log even when that init line isn't re-emitted.
+  gen_device_line <- function(ctx) {
+    idx <- tryCatch(attr(ctx, "vram_device") %||% 0L, error = function(e) 0L)
+    name <- tryCatch(ggmlR::ggml_vulkan_device_description(idx),
+                     error = function(e) "?")
+    mem <- tryCatch(ggmlR::ggml_vulkan_device_memory(idx), error = function(e) NULL)
+    memstr <- if (!is.null(mem)) {
+      sprintf(" [%.1f/%.1f GB free]", mem$free / 1e9, mem$total / 1e9)
+    } else ""
+    sprintf("device:        [%d] %s%s", idx, name, memstr)
+  }
+
+  # --- Generation-log summary -------------------------------------------------
+  # Distills the raw sd.cpp INFO log (already accumulated in log_file) into the
+  # signals that matter for "why is this slow": which device was picked, whether
+  # the flash-attention fast path engaged, and the per-stage wall times that
+  # sd.cpp prints as "<stage> completed, taking X.XXs". This is the per-section
+  # view of test_sampling_profile.R, built from the stage timings sd.cpp already
+  # emits (per-op Vulkan timings need GGML_VK_PERF_LOGGER, which writes to the R
+  # console, not this file, and is unsafe from the async worker thread).
+  summarize_gen_log <- function(path, dev_idx = 0L) {
+    if (!file.exists(path)) return(character(0))
+    lines <- readLines(path, warn = FALSE)
+    out <- c("=== Summary ===")
+
+    dev  <- grep("Selected main device:", lines, value = TRUE)
+    if (length(dev)) out <- c(out, sub(".*Selected main device:", "device:", dev[1]))
+
+    # Flash-attention status. sd.cpp does not reliably print a "Using flash
+    # attention" line for every architecture (e.g. flux2), so query the device
+    # capability directly (coopmat1_fa_support) as the source of truth, and use
+    # any sd.cpp "flash attention" line only as secondary confirmation.
+    fa_cap <- tryCatch(
+      isTRUE(ggmlR::ggml_vulkan_device_caps(dev_idx)$coopmat1_fa_support),
+      error = function(e) NA)
+    fa_log <- any(grepl("flash attention", lines, ignore.case = TRUE))
+    fa <- if (isTRUE(fa_cap) || fa_log) {
+      sprintf("flash-attn: ON (coopmat path%s)",
+              if (fa_log) ", confirmed in log" else " per device caps")
+    } else if (is.na(fa_cap)) {
+      "flash-attn: unknown (could not query device caps)"
+    } else {
+      "flash-attn: not available on this device"
+    }
+    out <- c(out, fa)
+
+    # All "<label> completed/decoded, taking X.XXs" stage timings, in order.
+    # Strip the leading "file.cpp:NNN - " source location sd.cpp prepends.
+    pat  <- "(.+?)(?: completed| decoded)?, taking ([0-9.]+)s"
+    hits <- regmatches(lines, regexec(pat, lines))
+    rows <- Filter(function(m) length(m) == 3, hits)
+    if (length(rows)) {
+      out <- c(out, "", "stage timings (from sd.cpp):")
+      for (m in rows) {
+        label <- trimws(m[[2]])
+        label <- sub("^[A-Za-z0-9_.-]+:[0-9]+\\s*-\\s*", "", label)  # drop file:line -
+        out <- c(out, sprintf("  %-40s %8.2fs", label, as.numeric(m[[3]])))
+      }
+    }
+
+    total <- grep("generate_image completed in", lines, value = TRUE)
+    if (length(total)) {
+      tt <- sub(".*completed in ([0-9.]+)s.*", "\\1", total[length(total)])
+      out <- c(out, "", sprintf("  %-46s %8.2fs", "TOTAL generate_image", as.numeric(tt)))
+    }
+    out
+  }
+
   # --- Vulkan capabilities inspector (ported from ggmlR vulkan_caps.R) -------
   # Prints the same report into a string. Used by the "GPU caps" toggle to show
   # coopmat / flash-attention / bf16 support — the key signals for diffusion
@@ -1045,6 +1185,26 @@ server <- function(input, output, session) {
       if (!is.null(local_state$last_image)) {
         sd2R::sd_save_image(local_state$last_image, file)
       }
+    }
+  )
+
+  # Show the "download log" button only when logging is on and a log exists.
+  output$download_log_ui <- renderUI({
+    rv$log_ready
+    # Show after either a logged generation or a profile run produced a file.
+    if (!is.null(rv$log_ready) && file.exists(log_file) &&
+        file.info(log_file)$size > 0) {
+      downloadButton("download_log", "Download log", class = "btn-block",
+                     style = "width: 100%;")
+    }
+  })
+
+  output$download_log <- downloadHandler(
+    filename = function() {
+      paste0("sd2R_gen_log_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".txt")
+    },
+    content = function(file) {
+      if (file.exists(log_file)) file.copy(log_file, file, overwrite = TRUE)
     }
   )
 }

@@ -39,6 +39,69 @@
 namespace sd2r {
 namespace meta {
 
+// Decide whether a device is a DISCRETE compute GPU (worth running diffusion on
+// / sharding onto). Defined unconditionally — used both by the meta backend
+// (device selection for sharding) and by the single-backend default device
+// pick (ggml_extend_backend.cpp), so it must not depend on the meta symbols.
+//
+// We must keep integrated GPUs (and software/CPU-emulated Vulkan devices) out:
+// a slow iGPU drags the whole sampling loop down (e.g. a 4B Flux.2 took ~616s
+// on RTX 5070 Ti + Intel iGPU because the graph ran on the iGPU). The filter is
+// intentionally layered, because Vulkan drivers do not reliably report
+// integrated parts as GGML_BACKEND_DEVICE_TYPE_IGPU — some expose them as a
+// plain ..._TYPE_GPU:
+//   1. reject anything that is not a GPU device type (drops explicit IGPU/CPU);
+//   2. reject by name/description heuristics (intel / igpu / integrated /
+//      llvmpipe / swiftshader / software / lavapipe) — catches drivers that
+//      mislabel integrated or software devices as GPU;
+//   3. reject devices with very little dedicated memory (a true iGPU has no
+//      dedicated VRAM; this guards the case where both type and name are
+//      uninformative).
+inline bool is_discrete_compute_gpu(ggml_backend_dev_t dev) {
+    if (dev == nullptr) {
+        return false;
+    }
+    ggml_backend_dev_props props;
+    std::memset(&props, 0, sizeof(props));
+    ggml_backend_dev_get_props(dev, &props);
+
+    // (1): only dedicated-memory GPUs; explicitly drop integrated/CPU types.
+    if (props.type != GGML_BACKEND_DEVICE_TYPE_GPU) {
+        return false;
+    }
+
+    // (2): name/description heuristic for mislabelled integrated/software parts.
+    auto contains_ci = [](const char* hay, const char* needle) -> bool {
+        if (hay == nullptr) {
+            return false;
+        }
+        std::string h(hay);
+        for (char& c : h) {
+            c = (char)std::tolower((unsigned char)c);
+        }
+        return h.find(needle) != std::string::npos;
+    };
+    static const char* const kRejectSubstrings[] = {
+        "intel", "igpu", "integrated",
+        "llvmpipe", "lavapipe", "swiftshader", "software",
+    };
+    for (const char* sub : kRejectSubstrings) {
+        if (contains_ci(props.name, sub) || contains_ci(props.description, sub)) {
+            return false;
+        }
+    }
+
+    // (3): require a minimum amount of dedicated memory (1 GiB). A genuine iGPU
+    // reports host/shared memory but we only reach here if type==GPU; this is a
+    // last-resort guard against drivers that report a GPU type with ~0 VRAM.
+    const size_t kMinDedicatedBytes = (size_t)1 << 30;  // 1 GiB
+    if (props.memory_total != 0 && props.memory_total < kMinDedicatedBytes) {
+        return false;
+    }
+
+    return true;
+}
+
 #if defined(SD2R_HAVE_META_BACKEND)
 // =========================================================================
 // Meta backend AVAILABLE in the linked libggml.a (detected by configure).
@@ -194,68 +257,6 @@ struct MetaBackendOwner {
         devs.clear();
     }
 };
-
-// Decide whether a device is a DISCRETE compute GPU worth sharding onto.
-//
-// We must keep integrated GPUs (and software/CPU-emulated Vulkan devices) out
-// of the meta backend: the meta layer waits for the SLOWEST device on every
-// graph compute, so a slow iGPU drags the whole sampling loop down (e.g. a 4B
-// Flux.2 took ~616s on RTX 5070 Ti + Intel iGPU because half the graph ran on
-// the iGPU). The filter is intentionally layered, because Vulkan drivers do
-// not reliably report integrated parts as GGML_BACKEND_DEVICE_TYPE_IGPU — some
-// expose them as a plain ..._TYPE_GPU:
-//   1. reject anything that is not a GPU/IGPU device type;
-//   2. reject the explicit IGPU type;
-//   3. reject by name/description heuristics (intel / igpu / llvmpipe /
-//      swiftshader / software / lavapipe) — catches drivers that mislabel
-//      integrated or software devices as GPU;
-//   4. reject devices with very little dedicated memory (a true iGPU has no
-//      dedicated VRAM; this guards the case where both type and name are
-//      uninformative).
-inline bool is_discrete_compute_gpu(ggml_backend_dev_t dev) {
-    if (dev == nullptr) {
-        return false;
-    }
-    ggml_backend_dev_props props;
-    std::memset(&props, 0, sizeof(props));
-    ggml_backend_dev_get_props(dev, &props);
-
-    // (1) + (2): only dedicated-memory GPUs; explicitly drop integrated.
-    if (props.type != GGML_BACKEND_DEVICE_TYPE_GPU) {
-        return false;
-    }
-
-    // (3): name/description heuristic for mislabelled integrated/software parts.
-    auto contains_ci = [](const char* hay, const char* needle) -> bool {
-        if (hay == nullptr) {
-            return false;
-        }
-        std::string h(hay);
-        for (char& c : h) {
-            c = (char)std::tolower((unsigned char)c);
-        }
-        return h.find(needle) != std::string::npos;
-    };
-    static const char* const kRejectSubstrings[] = {
-        "intel", "igpu", "integrated",
-        "llvmpipe", "lavapipe", "swiftshader", "software",
-    };
-    for (const char* sub : kRejectSubstrings) {
-        if (contains_ci(props.name, sub) || contains_ci(props.description, sub)) {
-            return false;
-        }
-    }
-
-    // (4): require a minimum amount of dedicated memory (1 GiB). A genuine iGPU
-    // reports host/shared memory but we only reach here if type==GPU; this is a
-    // last-resort guard against drivers that report a GPU type with ~0 VRAM.
-    const size_t kMinDedicatedBytes = (size_t)1 << 30;  // 1 GiB
-    if (props.memory_total != 0 && props.memory_total < kMinDedicatedBytes) {
-        return false;
-    }
-
-    return true;
-}
 
 // Get (lazily build) a meta-backend over the DISCRETE GPU devices only.
 // Returns nullptr if meta is unavailable / fewer than 2 discrete GPUs — the

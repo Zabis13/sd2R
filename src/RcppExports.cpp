@@ -72,6 +72,16 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// sd_set_log_debug
+void sd_set_log_debug(bool enabled);
+RcppExport SEXP _sd2R_sd_set_log_debug(SEXP enabledSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type enabled(enabledSEXP);
+    sd_set_log_debug(enabled);
+    return R_NilValue;
+END_RCPP
+}
 // sd_clear_log_file
 void sd_clear_log_file();
 RcppExport SEXP _sd2R_sd_clear_log_file() {
@@ -503,6 +513,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_sd2R_sd_set_preview_dump", (DL_FUNC) &_sd2R_sd_set_preview_dump, 5},
     {"_sd2R_sd_clear_preview_dump", (DL_FUNC) &_sd2R_sd_clear_preview_dump, 0},
     {"_sd2R_sd_set_log_file", (DL_FUNC) &_sd2R_sd_set_log_file, 1},
+    {"_sd2R_sd_set_log_debug", (DL_FUNC) &_sd2R_sd_set_log_debug, 1},
     {"_sd2R_sd_clear_log_file", (DL_FUNC) &_sd2R_sd_clear_log_file, 0},
     {"_sd2R_sd_set_verbose", (DL_FUNC) &_sd2R_sd_set_verbose, 1},
     {"_sd2R_sd_profile_start", (DL_FUNC) &_sd2R_sd_profile_start, 0},

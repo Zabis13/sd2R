@@ -111,6 +111,15 @@ static std::string resolve_first_device_by_type(enum ggml_backend_dev_type type)
     return ggml_backend_dev_name(dev);
 }
 
+static const char* sd_dev_type_str(enum ggml_backend_dev_type type) {
+    switch (type) {
+        case GGML_BACKEND_DEVICE_TYPE_GPU:  return "GPU";
+        case GGML_BACKEND_DEVICE_TYPE_IGPU: return "IGPU";
+        case GGML_BACKEND_DEVICE_TYPE_CPU:  return "CPU";
+        default:                            return "OTHER";
+    }
+}
+
 static ggml_backend_buffer_t ggml_backend_tensor_buffer(const struct ggml_tensor* tensor) {
     if (tensor == nullptr) {
         return nullptr;
@@ -236,13 +245,34 @@ bool sd_backend_is(ggml_backend_t backend, const std::string& name) {
 
 static std::string get_default_backend_name() {
     ggml_backend_load_all_once();
-    // should pick the same backend preference as ggml_backend_init_best
+
+    // Prefer a real DISCRETE compute GPU. The plain GGML_BACKEND_DEVICE_TYPE_GPU
+    // query is NOT reliable: Vulkan drivers often report an Intel iGPU (or a
+    // software rasterizer) as TYPE_GPU, so picking "the first GPU" can land
+    // diffusion on the integrated part and make a generation take minutes
+    // instead of seconds. is_discrete_compute_gpu() applies the same layered
+    // filter the meta backend uses (type + name + dedicated-memory), so the two
+    // device-selection paths agree.
+    const size_t dev_count = ggml_backend_dev_count();
+    for (size_t i = 0; i < dev_count; ++i) {
+        ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+        if (sd2r::meta::is_discrete_compute_gpu(dev)) {
+            return ggml_backend_dev_name(dev);
+        }
+    }
+
+    // Fallback (no discrete GPU found): keep the previous preference order so
+    // integrated-only / software / CPU-only machines still work.
     std::string name = resolve_first_device_by_type(GGML_BACKEND_DEVICE_TYPE_GPU);
     if (!name.empty()) {
+        LOG_WARN("No discrete GPU detected; falling back to %s (may be slow)",
+                 name.c_str());
         return name;
     }
     name = resolve_first_device_by_type(GGML_BACKEND_DEVICE_TYPE_IGPU);
     if (!name.empty()) {
+        LOG_WARN("No discrete GPU detected; falling back to integrated %s (slow)",
+                 name.c_str());
         return name;
     }
     return resolve_first_device_by_type(GGML_BACKEND_DEVICE_TYPE_CPU);
@@ -366,10 +396,11 @@ static ggml_backend_t sd_get_default_backend() {
         if (dev_count == 0) {
             LOG_ERROR("No devices found!");
         } else {
-            LOG_DEBUG("Found %zu backend devices:", dev_count);
+            LOG_INFO("Found %zu backend devices:", dev_count);
             for (size_t i = 0; i < dev_count; ++i) {
                 auto dev = ggml_backend_dev_get(i);
-                LOG_DEBUG("#%zu: %s", i, ggml_backend_dev_name(dev));
+                LOG_INFO("  #%zu: %s (type %s)", i, ggml_backend_dev_name(dev),
+                         sd_dev_type_str(ggml_backend_dev_type(dev)));
             }
         }
     });
@@ -412,6 +443,18 @@ static ggml_backend_t sd_get_default_backend() {
 
     if (sd_backend_is_cpu(backend)) {
         LOG_DEBUG("Using CPU backend");
+    }
+
+    // Report the device that actually got picked as the main (diffusion)
+    // backend. This is the key diagnostic for "is diffusion running on the
+    // discrete GPU or the integrated one?".
+    if (backend != nullptr) {
+        ggml_backend_dev_t dev = ggml_backend_get_device(backend);
+        if (dev != nullptr) {
+            LOG_INFO("Selected main device: %s (type %s)",
+                     ggml_backend_dev_name(dev),
+                     sd_dev_type_str(ggml_backend_dev_type(dev)));
+        }
     }
 
     return backend;

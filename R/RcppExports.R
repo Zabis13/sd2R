@@ -25,6 +25,10 @@ sd_set_log_file <- function(path) {
     invisible(.Call(`_sd2R_sd_set_log_file`, path))
 }
 
+sd_set_log_debug <- function(enabled) {
+    invisible(.Call(`_sd2R_sd_set_log_debug`, enabled))
+}
+
 sd_clear_log_file <- function() {
     invisible(.Call(`_sd2R_sd_clear_log_file`))
 }

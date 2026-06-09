@@ -10,7 +10,7 @@
 
 # sd2R 0.2.0
 
-## Performance: VAE Decode ×24 Faster
+## Performance: VAE Decode
 
 * `vae_conv_direct` now defaults to `TRUE` — VAE decoder uses `GGML_OP_CONV_2D`
   (direct convolution via `conv2d_mm.comp`) instead of the legacy IM2COL + MUL_MAT path.

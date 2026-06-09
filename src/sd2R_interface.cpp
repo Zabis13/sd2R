@@ -37,6 +37,11 @@ static bool sd_atomic_replace(const char* src, const char* dst) {
 // --- Verbose flag: controls log and progress output ---
 static bool r_sd_verbose = false;
 
+// --- Log-debug flag: when true, DEBUG-level messages are also written to the
+// async log file (used by the Shiny "generation log" diagnostic). Off by
+// default to keep the normal log quiet. ---
+static bool r_sd_log_debug = false;
+
 // --- Profiling: capture stage events from sd.cpp log messages ---
 static bool r_sd_profiling = false;
 
@@ -152,10 +157,13 @@ static void r_sd_log_callback(sd_log_level_t level, const char* text, void* data
         profile_parse_log(msg);
     }
 
-    // When async: write to log file instead of R console
+    // When async: write to log file instead of R console.
+    // Append (not overwrite) so the full generation log accumulates. DEBUG
+    // lines (e.g. the Vulkan device list) are written only when the diagnostic
+    // log-debug flag is on.
     if (r_sd_async_running.load()) {
-        if (!r_sd_log_file.empty() && level != SD_LOG_DEBUG) {
-            FILE* fp = std::fopen(r_sd_log_file.c_str(), "w");
+        if (!r_sd_log_file.empty() && (level != SD_LOG_DEBUG || r_sd_log_debug)) {
+            FILE* fp = std::fopen(r_sd_log_file.c_str(), "a");
             if (fp) {
                 std::fprintf(fp, "%s\n", msg.c_str());
                 std::fclose(fp);
@@ -293,6 +301,17 @@ void sd_clear_preview_dump() {
 // [[Rcpp::export]]
 void sd_set_log_file(std::string path) {
     r_sd_log_file = path;
+    // Truncate so each load/generation starts with a clean log (the callback
+    // appends from here on).
+    if (!r_sd_log_file.empty()) {
+        FILE* fp = std::fopen(r_sd_log_file.c_str(), "w");
+        if (fp) std::fclose(fp);
+    }
+}
+
+// [[Rcpp::export]]
+void sd_set_log_debug(bool enabled) {
+    r_sd_log_debug = enabled;
 }
 
 // [[Rcpp::export]]
@@ -367,6 +386,7 @@ SEXP sd_create_context(Rcpp::List params) {
     std::string diffusion_model, high_noise_diffusion_model;
     std::string vae, taesd, control_net, photo_maker;
     std::string tensor_type_rules;
+    std::string backend_spec_str;  // stable storage for p.backend (built below)
 
     auto set_str = [&](const char* name, std::string& storage, const char*& target) {
         if (params.containsElementNamed(name) && !Rf_isNull(params[name])) {
@@ -431,12 +451,44 @@ SEXP sd_create_context(Rcpp::List params) {
         p.diffusion_conv_direct = Rcpp::as<bool>(params["diffusion_conv_direct"]);
     if (params.containsElementNamed("diffusion_flash_attn"))
         p.diffusion_flash_attn = Rcpp::as<bool>(params["diffusion_flash_attn"]);
-    if (params.containsElementNamed("diffusion_gpu_device"))
-        p.diffusion_gpu_device = Rcpp::as<int>(params["diffusion_gpu_device"]);
-    if (params.containsElementNamed("clip_gpu_device"))
-        p.clip_gpu_device = Rcpp::as<int>(params["clip_gpu_device"]);
-    if (params.containsElementNamed("vae_gpu_device"))
-        p.vae_gpu_device = Rcpp::as<int>(params["vae_gpu_device"]);
+    // Per-module GPU selection. The core ignores p.diffusion_gpu_device etc.
+    // (those struct fields are unused); device assignment is driven by the
+    // p.backend spec string. So translate the R-side gpu indices into that
+    // string: a single "VulkanN" sets the default for all modules, while mixed
+    // indices produce a per-module spec ("diffusion=Vulkan0,te=Vulkan1,...").
+    // When every index is < 0 we leave p.backend null so the auto-selection in
+    // get_default_backend_name() (prefers a discrete GPU) stays in effect.
+    {
+        auto gpu_idx = [&](const char* name) -> int {
+            if (params.containsElementNamed(name) && !Rf_isNull(params[name]))
+                return Rcpp::as<int>(params[name]);
+            return -1;
+        };
+        int diff_gpu = gpu_idx("diffusion_gpu_device");
+        int clip_gpu = gpu_idx("clip_gpu_device");
+        int vae_gpu  = gpu_idx("vae_gpu_device");
+
+        if (diff_gpu >= 0 || clip_gpu >= 0 || vae_gpu >= 0) {
+            // If only the diffusion index is given, use it as the global default
+            // (clip/vae follow the same device unless overridden separately).
+            if (diff_gpu >= 0 && clip_gpu < 0 && vae_gpu < 0) {
+                backend_spec_str = "Vulkan" + std::to_string(diff_gpu);
+            } else {
+                std::vector<std::string> parts;
+                if (diff_gpu >= 0)
+                    parts.push_back("diffusion=Vulkan" + std::to_string(diff_gpu));
+                if (clip_gpu >= 0)
+                    parts.push_back("te=Vulkan" + std::to_string(clip_gpu));
+                if (vae_gpu >= 0)
+                    parts.push_back("vae=Vulkan" + std::to_string(vae_gpu));
+                for (size_t i = 0; i < parts.size(); ++i) {
+                    if (i) backend_spec_str += ",";
+                    backend_spec_str += parts[i];
+                }
+            }
+            p.backend = backend_spec_str.c_str();
+        }
+    }
 
     // sd2R "second path": generate via the meta backend (on/off flag).
     // Default off => normal single-backend path. If meta is unavailable in ggmlR,
@@ -478,6 +530,7 @@ struct AsyncCtxState {
     std::string model_path, clip_l, clip_g, clip_vision, t5xxl;
     std::string llm, llm_vision, diffusion_model, high_noise_diffusion_model;
     std::string vae, taesd, control_net, photo_maker, tensor_type_rules;
+    std::string backend_spec;  // stable storage for p.backend (per-module GPU)
 
     std::atomic<bool> running{false};
     std::atomic<bool> done{false};
@@ -581,12 +634,39 @@ bool sd_create_context_async(Rcpp::List params) {
         p.diffusion_conv_direct = Rcpp::as<bool>(params["diffusion_conv_direct"]);
     if (params.containsElementNamed("diffusion_flash_attn"))
         p.diffusion_flash_attn = Rcpp::as<bool>(params["diffusion_flash_attn"]);
-    if (params.containsElementNamed("diffusion_gpu_device"))
-        p.diffusion_gpu_device = Rcpp::as<int>(params["diffusion_gpu_device"]);
-    if (params.containsElementNamed("clip_gpu_device"))
-        p.clip_gpu_device = Rcpp::as<int>(params["clip_gpu_device"]);
-    if (params.containsElementNamed("vae_gpu_device"))
-        p.vae_gpu_device = Rcpp::as<int>(params["vae_gpu_device"]);
+    // Per-module GPU selection -> p.backend spec string (the core ignores the
+    // p.*_gpu_device fields; see sd_create_context for the rationale). All
+    // indices < 0 => leave p.backend null so discrete-GPU auto-selection runs.
+    {
+        auto gpu_idx = [&](const char* name) -> int {
+            if (params.containsElementNamed(name) && !Rf_isNull(params[name]))
+                return Rcpp::as<int>(params[name]);
+            return -1;
+        };
+        int diff_gpu = gpu_idx("diffusion_gpu_device");
+        int clip_gpu = gpu_idx("clip_gpu_device");
+        int vae_gpu  = gpu_idx("vae_gpu_device");
+        std::string& spec = g_async_ctx.backend_spec;
+        spec.clear();
+        if (diff_gpu >= 0 || clip_gpu >= 0 || vae_gpu >= 0) {
+            if (diff_gpu >= 0 && clip_gpu < 0 && vae_gpu < 0) {
+                spec = "Vulkan" + std::to_string(diff_gpu);
+            } else {
+                std::vector<std::string> parts;
+                if (diff_gpu >= 0)
+                    parts.push_back("diffusion=Vulkan" + std::to_string(diff_gpu));
+                if (clip_gpu >= 0)
+                    parts.push_back("te=Vulkan" + std::to_string(clip_gpu));
+                if (vae_gpu >= 0)
+                    parts.push_back("vae=Vulkan" + std::to_string(vae_gpu));
+                for (size_t i = 0; i < parts.size(); ++i) {
+                    if (i) spec += ",";
+                    spec += parts[i];
+                }
+            }
+            p.backend = spec.c_str();
+        }
+    }
 
     // sd2R "second path": generate via the meta backend (on/off flag).
     // The global flag is read in the worker thread at new_sd_ctx → set it BEFORE launch.
