@@ -298,7 +298,6 @@ namespace Flux {
         std::vector<ModulationOut> get_distil_img_mod(GGMLRunnerContext* ctx, ggml_tensor* vec) {
             // TODO: not hardcoded?
             const int single_blocks_count = 38;
-            const int double_blocks_count = 19;
 
             int64_t offset = 6 * idx + 3 * single_blocks_count;
             return {ModulationOut(ctx, vec, offset), ModulationOut(ctx, vec, offset + 3)};
@@ -867,7 +866,6 @@ namespace Flux {
             ggml_tensor* vec;
             ggml_tensor* txt_img_mask = nullptr;
             if (params.is_chroma) {
-                int64_t mod_index_length = 344;
                 auto approx              = std::dynamic_pointer_cast<ChromaApproximator>(blocks["distilled_guidance_layer"]);
                 auto distill_timestep    = ggml_ext_timestep_embedding(ctx->ggml_ctx, timesteps, 16, 10000, 1000.f);
                 auto distill_guidance    = ggml_ext_timestep_embedding(ctx->ggml_ctx, guidance, 16, 10000, 1000.f);
@@ -1074,8 +1072,6 @@ namespace Flux {
             int64_t H      = x->ne[1];
             int64_t C      = x->ne[2];
             int patch_size = params.patch_size;
-            int pad_h      = (patch_size - H % patch_size) % patch_size;
-            int pad_w      = (patch_size - W % patch_size) % patch_size;
 
             auto img           = DiT::pad_and_patchify(ctx, x, patch_size, patch_size);
             int64_t img_tokens = img->ne[1];
@@ -1541,7 +1537,6 @@ namespace Flux {
 
                 // auto y = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, 768, 1);
                 // ggml_set_f32(y, 0.01f);
-                auto y = nullptr;
                 // print_ggml_tensor(y);
 
                 sd::Tensor<float> out;

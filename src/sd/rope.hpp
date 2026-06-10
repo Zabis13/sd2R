@@ -210,7 +210,7 @@ namespace Rope {
                 rope(trans_ids[i], axes_dim[i], axis_theta, axis_wrap_dims);  // [bs*pos_len, axes_dim[i]/2 * 2 * 2]
             for (int b = 0; b < bs; ++b) {
                 for (int j = 0; j < pos_len; ++j) {
-                    for (int k = 0; k < rope_emb[0].size(); ++k) {
+                    for (int k = 0; k < (int)rope_emb[0].size(); ++k) {
                         emb[b * pos_len + j][offset + k] = rope_emb[j][k];
                     }
                 }
@@ -455,7 +455,7 @@ namespace Rope {
         auto txt_ids     = linspace<float>(1.f * txt_id_start, 1.f * context_len + txt_id_start, context_len);
         std::vector<std::vector<float>> txt_ids_repeated(bs * context_len, std::vector<float>(3));
         for (int i = 0; i < bs; ++i) {
-            for (int j = 0; j < txt_ids.size(); ++j) {
+            for (int j = 0; j < (int)txt_ids.size(); ++j) {
                 txt_ids_repeated[i * txt_ids.size() + j] = {txt_ids[j], txt_ids[j], txt_ids[j]};
             }
         }
@@ -542,7 +542,7 @@ namespace Rope {
         auto txt_ids     = linspace<float>(1.f * txt_id_start, 1.f * context_len + txt_id_start, context_len);
         std::vector<std::vector<float>> txt_ids_repeated(bs * context_len, std::vector<float>(3));
         for (int i = 0; i < bs; ++i) {
-            for (int j = 0; j < txt_ids.size(); ++j) {
+            for (int j = 0; j < (int)txt_ids.size(); ++j) {
                 txt_ids_repeated[i * txt_ids.size() + j] = {txt_ids[j], txt_ids[j], txt_ids[j]};
             }
         }
@@ -678,7 +678,7 @@ namespace Rope {
 
         std::vector<std::vector<float>> vid_ids_repeated(bs * vid_ids.size(), std::vector<float>(3));
         for (int i = 0; i < bs; ++i) {
-            for (int j = 0; j < vid_ids.size(); ++j) {
+            for (int j = 0; j < (int)vid_ids.size(); ++j) {
                 vid_ids_repeated[i * vid_ids.size() + j] = vid_ids[j];
             }
         }

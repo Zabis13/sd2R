@@ -315,8 +315,6 @@ public:
         auto to_v     = std::dynamic_pointer_cast<Linear>(blocks["to_v"]);
         auto to_out_0 = std::dynamic_pointer_cast<Linear>(blocks["to_out.0"]);
 
-        int64_t n         = x->ne[2];
-        int64_t n_token   = x->ne[1];
         int64_t n_context = context->ne[1];
         int64_t inner_dim = d_head * n_head;
 

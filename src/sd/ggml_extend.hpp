@@ -305,11 +305,6 @@ __STATIC_INLINE__ void ggml_ext_tensor_iter(
 __STATIC_INLINE__ void ggml_ext_tensor_iter(
     ggml_tensor* tensor,
     const std::function<void(ggml_tensor*, int64_t)>& fn) {
-    int64_t n0 = tensor->ne[0];
-    int64_t n1 = tensor->ne[1];
-    int64_t n2 = tensor->ne[2];
-    int64_t n3 = tensor->ne[3];
-
     for (int64_t i = 0; i < ggml_nelements(tensor); i++) {
         fn(tensor, i);
     }
@@ -359,7 +354,6 @@ __STATIC_INLINE__ ggml_tensor* load_tensor_from_file(ggml_context* ctx, const st
     std::string name(length, 0);
     file.read(&name[0], length);
     ggml_tensor* tensor = ggml_new_tensor_4d(ctx, (ggml_type)ttype, ne[0], ne[1], ne[2], ne[3]);
-    const size_t bpe    = ggml_type_size(ggml_type(ttype));
     file.read(reinterpret_cast<char*>(tensor->data), ggml_nbytes(tensor));
     return tensor;
 }
@@ -3292,7 +3286,6 @@ public:
         }
 
         for (auto& pair : params) {
-            ggml_tensor* param           = pair.second;
             tensors[prefix + pair.first] = pair.second;
         }
     }

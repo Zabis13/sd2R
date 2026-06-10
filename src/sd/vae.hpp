@@ -154,7 +154,7 @@ public:
         }
         int64_t t1 = ggml_time_ms();
         LOG_DEBUG("computing vae encode graph completed, taking %.2fs", (t1 - t0) * 1.0f / 1000);
-        return std::move(output);
+        return output;
     }
 
     sd::Tensor<float> decode(int n_threads,
@@ -208,7 +208,7 @@ public:
         }
         int64_t t1 = ggml_time_ms();
         LOG_DEBUG("computing vae decode graph completed, taking %.2fs", (t1 - t0) * 1.0f / 1000);
-        return std::move(output);
+        return output;
     }
 
     virtual sd::Tensor<float> vae_output_to_latents(const sd::Tensor<float>& vae_output, std::shared_ptr<RNG> rng) = 0;

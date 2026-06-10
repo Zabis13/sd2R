@@ -31,7 +31,11 @@ local({
     if (depth == 0) { end_presets <- i; break }
   }
 
-  code <- c(lines[start_presets:end_presets], "", lines[start_fn:end_fn])
+  # auto_assign_roles uses %||%, which lives near the top of app.R (outside the
+  # extracted ranges). Define it here so the extracted function is self-contained.
+  helper <- "`%||%` <- function(a, b) if (is.null(a)) b else a"
+
+  code <- c(helper, "", lines[start_presets:end_presets], "", lines[start_fn:end_fn])
   eval(parse(text = code), envir = .GlobalEnv)
 })
 
@@ -90,7 +94,8 @@ test_that("auto_assign_roles detects SDXL architecture", {
 
   expect_equal(roles$arch, "sdxl")
   expect_equal(roles$model, "sdxl_base_1.0.safetensors")
-  expect_match(roles$vae, "vae")
+  # SDXL bundles its VAE inside the checkpoint, so no external VAE is assigned.
+  expect_equal(roles$vae, "")
 })
 
 test_that("auto_assign_roles returns sd1 for empty dir", {

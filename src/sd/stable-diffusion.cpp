@@ -513,8 +513,27 @@ public:
         }
         bool tae_preview_only = sd_ctx_params->tae_preview_only;
         if (version == VERSION_SDXS_512_DS || version == VERSION_SDXS_09) {
-            tae_preview_only = false;
-            use_tae          = true;
+            // SDXS distilled models normally ship a TAESD decoder, but some
+            // checkpoints embed a full first_stage_model VAE instead and have no
+            // tae.* tensors. Forcing use_tae there makes the loader look for
+            // missing tae.decoder.* tensors and fail. Only force TAESD when the
+            // model (or an external taesd_path, handled above) actually provides
+            // tae.* tensors; otherwise fall back to the regular VAE.
+            bool has_tae = use_tae;  // true if taesd_path loaded ok above
+            if (!has_tae) {
+                for (const auto& name : model_loader.get_tensor_names()) {
+                    if (name.rfind("tae.", 0) == 0) {
+                        has_tae = true;
+                        break;
+                    }
+                }
+            }
+            if (has_tae) {
+                tae_preview_only = false;
+                use_tae          = true;
+            } else {
+                LOG_INFO("SDXS model has no TAESD tensors; using its first_stage_model VAE");
+            }
         }
 
         if (sd_ctx_params->circular_x || sd_ctx_params->circular_y) {

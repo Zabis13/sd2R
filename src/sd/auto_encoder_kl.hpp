@@ -288,7 +288,7 @@ public:
           double_z(double_z) {
         blocks["conv_in"] = std::shared_ptr<GGMLBlock>(new Conv2d(in_channels, ch, {3, 3}, {1, 1}, {1, 1}));
 
-        size_t num_resolutions = ch_mult.size();
+        int num_resolutions = static_cast<int>(ch_mult.size());
 
         int block_in = 1;
         for (int i = 0; i < num_resolutions; i++) {
@@ -331,7 +331,7 @@ public:
         // sd::ggml_graph_cut::mark_graph_cut(h, "vae.encoder.prelude", "h");
 
         // downsampling
-        size_t num_resolutions = ch_mult.size();
+        int num_resolutions = static_cast<int>(ch_mult.size());
         for (int i = 0; i < num_resolutions; i++) {
             for (int j = 0; j < num_res_blocks; j++) {
                 std::string name = "down." + std::to_string(i) + ".block." + std::to_string(j);

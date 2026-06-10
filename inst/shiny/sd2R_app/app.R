@@ -94,10 +94,13 @@ classify_files <- function(files) {
 }
 
 # ---------- Auto-assign model roles by filename ----------
-auto_assign_roles <- function(dir_path) {
+# arch_override: if non-NULL, respect the user-selected architecture instead of
+# auto-detecting it from filenames. Files are then matched only against that
+# architecture (e.g. "flux" excludes flux2 diffusion files, and vice versa).
+auto_assign_roles <- function(dir_path, arch_override = NULL) {
   files <- list.files(dir_path, pattern = "\\.(safetensors|gguf|ckpt)$",
                       full.names = FALSE, ignore.case = TRUE)
-  if (length(files) == 0) return(list(arch = "sd1"))
+  if (length(files) == 0) return(list(arch = arch_override %||% "sd1"))
 
   sizes <- file.size(file.path(dir_path, files))
   names(sizes) <- files
@@ -115,7 +118,10 @@ auto_assign_roles <- function(dir_path) {
   has_sdxl  <- any(grepl("sdxl|sd_xl", fl))
   has_t5    <- any(grepl("t5", fl))
 
-  if (has_flux2) {
+  if (!is.null(arch_override)) {
+    # User picked the architecture explicitly — honour it and match files to it.
+    roles$arch <- arch_override
+  } else if (has_flux2) {
     roles$arch <- "flux2"
   } else if (has_flux) {
     roles$arch <- "flux"
@@ -133,18 +139,31 @@ auto_assign_roles <- function(dir_path) {
 
   # Step 2: assign auxiliary roles (VAE, CLIP, T5)
 
-  # VAE: "vae" or standalone "ae" in name
-  idx <- grep("(^|[^a-z])(vae|\\bae\\b)", fl)
-  if (length(idx)) {
-    pick <- idx[which.max(sizes[idx])]
+  # VAE: "vae" or standalone "ae" in name. SD1/SD2/SDXL bundle the VAE inside the
+  # checkpoint, so they need no external file. flux and flux2 use different VAEs
+  # (e.g. ae.safetensors vs flux2-vae.safetensors) that must not be swapped.
+  vae_idx <- grep("(^|[^a-z])(vae|\\bae\\b)", fl)
+  if (roles$arch %in% c("sd1", "sd2", "sdxl")) {
+    vae_idx <- integer(0)
+  } else if (identical(roles$arch, "flux")) {
+    # FLUX.1 VAE must not be a flux2 VAE.
+    vae_idx <- setdiff(vae_idx, grep("flux[._-]?2|flux2", fl))
+  } else if (identical(roles$arch, "flux2")) {
+    # Prefer an explicit flux2 VAE; fall back to any VAE only if none is named.
+    f2 <- intersect(vae_idx, grep("flux[._-]?2|flux2", fl))
+    if (length(f2)) vae_idx <- f2
+  }
+  if (length(vae_idx)) {
+    pick <- vae_idx[which.max(sizes[vae_idx])]
     roles$vae <- files[pick]
     assigned[pick] <- TRUE
   }
 
-  # FLUX.2 uses an LLM text encoder (Qwen3 / Mistral) only — it has no CLIP-L
-  # or T5-XXL. Assigning those here would pull in incompatible encoders and
-  # confuse model loading, so skip them for flux2.
-  uses_clip_t5 <- roles$arch != "flux2"
+  # CLIP-L / T5-XXL are external encoders only for FLUX.1 and SD3. SD1/SD2/SDXL
+  # ship them inside the single checkpoint, and FLUX.2 uses an LLM encoder
+  # instead — assigning standalone encoders there would feed sd.cpp incompatible
+  # paths, so restrict these roles to the architectures that actually need them.
+  uses_clip_t5 <- roles$arch %in% c("flux", "sd3")
 
   # CLIP-L: "clip" in name (FLUX.1 / SD3 / SDXL)
   if (uses_clip_t5) {
@@ -168,28 +187,53 @@ auto_assign_roles <- function(dir_path) {
     }
   }
 
-  # LLM text encoder: Qwen3 (FLUX.2 Klein) / Mistral-Small (full FLUX.2)
-  idx <- grep("qwen|mistral", fl)
-  idx <- setdiff(idx, which(assigned))
-  if (length(idx)) {
-    pick <- idx[which.max(sizes[idx])]
-    roles$llm <- files[pick]
-    assigned[pick] <- TRUE
+  # LLM text encoder: Qwen3 (FLUX.2 Klein) / Mistral-Small (full FLUX.2) — only
+  # relevant to FLUX.2.
+  if (identical(roles$arch, "flux2")) {
+    idx <- grep("qwen|mistral", fl)
+    idx <- setdiff(idx, which(assigned))
+    if (length(idx)) {
+      pick <- idx[which.max(sizes[idx])]
+      roles$llm <- files[pick]
+      assigned[pick] <- TRUE
+    }
   }
 
-  # Step 3: assign diffusion model (Flux/SD3 specific files; LLM already taken)
-  idx <- grep("flux|sd3|dit|unet", fl)
-  idx <- setdiff(idx, which(assigned))
-  if (length(idx)) {
-    pick <- idx[which.max(sizes[idx])]
-    roles$diffusion <- files[pick]
-    assigned[pick] <- TRUE
+  # Step 3: assign diffusion model — only the multipart architectures use it,
+  # and each one must pick its own kind of file (never another arch's).
+  if (is_multipart) {
+    is_flux_file  <- grepl("flux", fl)
+    is_flux2_file <- grepl("flux[._-]?2|flux2", fl)
+    is_sd3_file   <- grepl("sd3", fl)
+    is_generic    <- grepl("dit|unet", fl)  # arch-neutral diffusion naming
+
+    if (identical(roles$arch, "flux")) {
+      # FLUX.1: flux-named files, excluding flux2.
+      cand <- which(is_flux_file & !is_flux2_file)
+    } else if (identical(roles$arch, "flux2")) {
+      # FLUX.2: requires an actual flux2 file; never fall back to FLUX.1.
+      cand <- which(is_flux2_file)
+    } else {  # sd3
+      cand <- which(is_sd3_file | is_generic)
+    }
+    idx <- setdiff(cand, which(assigned))
+    if (length(idx)) {
+      pick <- idx[which.max(sizes[idx])]
+      roles$diffusion <- files[pick]
+      assigned[pick] <- TRUE
+    }
   }
 
   # Step 4: main model — only for single-file architectures (SD1/SD2/SDXL)
-  # For Flux/SD3 skip this to avoid loading incompatible checkpoints
+  # For Flux/SD3 skip this to avoid loading incompatible checkpoints.
+  # Exclude obvious component files (encoders/VAE/diffusion/aux) so we never
+  # hand an encoder or VAE to the "Model" slot when no real checkpoint exists.
   if (!is_multipart) {
-    remaining <- which(!assigned)
+    is_component <- grepl(paste0("(^|[^a-z])(vae|\\bae\\b)|clip|t5|qwen|mistral|",
+                                 "flux|sd3|dit|unet|upscaler|esrgan|taesd|lora|",
+                                 "controlnet|control_net|photo_maker|clip_vision|clip-vision"),
+                          fl)
+    remaining <- setdiff(which(!assigned), which(is_component))
     if (length(remaining)) {
       pick <- remaining[which.max(sizes[remaining])]
       roles$model <- files[pick]
@@ -438,10 +482,9 @@ server <- function(input, output, session) {
     by_role <- classify_files(all_files)
     mk <- function(v) c(none, setNames(v, v))
 
-    roles <- auto_assign_roles(dir_path)
-
-    # Auto-switch architecture based on detected files
-    updateSelectInput(session, "model_type", selected = roles$arch)
+    # Respect the architecture the user picked: match files to it instead of
+    # auto-switching the dropdown.
+    roles <- auto_assign_roles(dir_path, arch_override = input$model_type)
 
     updateSelectInput(session, "sel_model",     choices = mk(by_role$main),      selected = roles$model)
     updateSelectInput(session, "sel_diffusion", choices = mk(by_role$diffusion), selected = roles$diffusion)
@@ -450,9 +493,24 @@ server <- function(input, output, session) {
     updateSelectInput(session, "sel_t5xxl",     choices = mk(by_role$t5xxl),     selected = roles$t5xxl)
     updateSelectInput(session, "sel_llm",       choices = mk(by_role$llm),       selected = roles$llm)
 
-    showNotification(sprintf("Found %d files, detected: %s",
-                             length(all_files), toupper(roles$arch)),
-                     type = "message")
+    # Warn if the primary file for the chosen architecture is missing, instead
+    # of silently leaving a (none) the user might not notice.
+    if (roles$arch %in% c("flux", "flux2", "sd3")) {
+      primary_ok <- nzchar(roles$diffusion)
+      primary_lbl <- "diffusion model"
+    } else {
+      primary_ok <- nzchar(roles$model)
+      primary_lbl <- "model checkpoint"
+    }
+    if (!primary_ok) {
+      showNotification(sprintf("No %s found for %s in this folder",
+                               primary_lbl, toupper(roles$arch)),
+                       type = "warning", duration = 8)
+    } else {
+      showNotification(sprintf("Found %d files, matched for %s",
+                               length(all_files), toupper(roles$arch)),
+                       type = "message")
+    }
   }
 
   # Scan on button click
