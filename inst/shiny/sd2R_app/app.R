@@ -360,16 +360,6 @@ ui <- fluidPage(
       ),
       selectInput("sel_vae", "VAE (optional)", choices = NULL),
 
-      # Keep the text encoder (CLIP / T5 / Qwen3-LLM) on CPU. On Windows+NVIDIA
-      # a near-full VRAM makes the driver spill encoder weights to system RAM
-      # (WDDM sysmem fallback) and stream them over PCIe on every layer, which
-      # can blow text_encode up to hundreds of seconds. Computing the encoder on
-      # CPU avoids that thrash and frees VRAM for diffusion. Must be set before
-      # Load Model (it is a context-creation flag).
-      checkboxInput("keep_clip_on_cpu",
-                    "Text encoder on CPU (fixes slow text_encode on low VRAM)",
-                    value = FALSE),
-
       actionButton("load_model", "Load Model", class = "btn-primary btn-block",
                     style = "width: 100%; margin-bottom: 15px;"),
 
@@ -667,10 +657,6 @@ server <- function(input, output, session) {
     rv$loading_model <- TRUE
     local_state$load_t0 <- as.numeric(Sys.time())
     local_state$model_type <- input$model_type
-    # Remember the value the context was actually built with, so the generation
-    # log reflects the loaded context, not the live checkbox (which can drift
-    # before the next reload).
-    local_state$keep_clip_on_cpu <- isTRUE(input$keep_clip_on_cpu)
     rv$status_msg <- "Loading model..."
 
     # Build params for C++ sd_create_context_async
@@ -688,11 +674,7 @@ server <- function(input, output, session) {
       wtype = as.integer(sd2R::SD_TYPE$COUNT),
       n_threads = 0L,
       flow_shift = 0.0,
-      lora_apply_mode = as.integer(sd2R::LORA_APPLY_MODE$AUTO),
-      # Optionally keep the text encoder (incl. FLUX.2 Qwen3-LLM) on CPU to
-      # dodge the WDDM sysmem-fallback thrash that wrecks text_encode on a
-      # near-full GPU (see the UI checkbox note).
-      keep_clip_on_cpu = isTRUE(input$keep_clip_on_cpu)
+      lora_apply_mode = as.integer(sd2R::LORA_APPLY_MODE$AUTO)
     )
     if (!is.null(paths$model_path))
       ctx_params$model_path <- paths$model_path
@@ -818,7 +800,6 @@ server <- function(input, output, session) {
         sprintf("scheduler:     %s", input$scheduler),
         sprintf("cfg:           %s", input$cfg),
         sprintf("seed:          %s", input$seed),
-        sprintf("keep_clip_on_cpu: %s", isTRUE(local_state$keep_clip_on_cpu)),
         gen_device_line(local_state$ctx),
         "",
         "--- sd.cpp log ---")
@@ -1101,30 +1082,6 @@ server <- function(input, output, session) {
       tt <- sub(".*completed in ([0-9.]+)s.*", "\\1", total[length(total)])
       out <- c(out, "", sprintf("  %-46s %8.2fs", "TOTAL generate_image", as.numeric(tt)))
     }
-
-    # VRAM-spill (WDDM sysmem-fallback) heuristic. We can't ask the driver
-    # whether an allocation landed in VRAM or in system RAM (WDDM does it
-    # transparently), so flag the signature instead: on Windows, a tiny encoder
-    # compute buffer paired with a text-encode that dwarfs sampling means the
-    # encoder weights are being streamed over PCIe each layer. Suggest the
-    # "Text encoder on CPU" toggle. Linux has no such silent fallback, so the
-    # warning is Windows-only.
-    if (identical(.Platform$OS.type, "windows")) {
-      cond_t <- grep("get_learned_condition completed, taking", lines, value = TRUE)
-      samp_t <- grep("sampling completed, taking", lines, value = TRUE)
-      if (length(cond_t) && length(samp_t)) {
-        ct <- as.numeric(sub(".*taking ([0-9.]+)s.*", "\\1", cond_t[length(cond_t)]))
-        st <- as.numeric(sub(".*taking ([0-9.]+)s.*", "\\1", samp_t[length(samp_t)]))
-        # Encoder >5x slower than sampling AND >30s absolute: not a normal
-        # encoder, almost certainly PCIe weight thrash.
-        if (is.finite(ct) && is.finite(st) && st > 0 && ct > 30 && ct > 5 * st) {
-          out <- c(out, "",
-            "!!! text_encode is abnormally slow (likely VRAM spill / WDDM sysmem",
-            "    fallback: encoder weights streamed over PCIe). Try loading the",
-            "    model with 'Text encoder on CPU' enabled, or free VRAM.")
-        }
-      }
-    }
     out
   }
 
@@ -1134,6 +1091,37 @@ server <- function(input, output, session) {
   # speed (a missing coopmat1_fa_support means flash-attn silently falls back).
   collect_vulkan_caps <- function() {
     capture.output({
+      # --- CPU / build capabilities ----------------------------------------
+      # These come from the linked libggml.a (ggmlR), NOT from sd2R's own
+      # compile flags — the CPU math kernels (incl. the text encoder when it
+      # runs on CPU) live there. A Windows build of ggmlR missing AVX2/FMA or
+      # OPENMP makes CPU text_encode collapse to scalar/single-thread and can
+      # take minutes (observed: 584s on a strong CPU). This block is the first
+      # thing to check when text_encode is slow with the encoder on CPU.
+      cat("=== CPU / Build Capabilities (from libggml.a) ===\n\n")
+      si <- tryCatch(sd2R::sd_system_info(), error = function(e) NULL)
+      if (!is.null(si)) {
+        cat("sd2R version :", si$sd2R_version, "\n")
+        cat("sd.cpp build :", si$sd_cpp_version, "\n")
+        cat("CPU cores    :", si$num_cores, "\n")
+        cat("ggml string  :", trimws(si$system_info), "\n")
+      }
+      cf <- tryCatch(ggmlR::ggml_cpu_features(), error = function(e) NULL)
+      if (!is.null(cf)) {
+        cat("ggml version :", tryCatch(ggmlR::ggml_version(),
+                                       error = function(e) "?"), "\n")
+        flag <- function(x) if (isTRUE(cf[[x]])) "YES" else "no"
+        # The four that actually move the needle for CPU text_encode speed.
+        cat("\n  --- key CPU flags ---\n")
+        cat(sprintf("  OPENMP : %s   (multi-thread matmul; OFF => single-thread)\n",
+                    if (grepl("OPENMP = 1", si$system_info %||% "")) "YES" else "no"))
+        cat(sprintf("  AVX2   : %s   (vectorized matmul; OFF => scalar, ~slow)\n", flag("avx2")))
+        cat(sprintf("  FMA    : %s\n", flag("fma")))
+        cat(sprintf("  F16C   : %s   (fast f16<->f32 for quantized weights)\n", flag("f16c")))
+        cat(sprintf("  AVX512 : %s\n", flag("avx512")))
+        cat("\n")
+      }
+
       cat("=== Vulkan Device Capabilities ===\n\n")
       if (!ggmlR::ggml_vulkan_available()) {
         cat("Vulkan: NOT COMPILED\n")
