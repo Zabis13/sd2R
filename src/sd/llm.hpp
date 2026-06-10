@@ -965,6 +965,14 @@ namespace LLM {
                 x        = ggml_ext_cont(ctx->ggml_ctx, kqv);
                 x        = ggml_reshape_3d(ctx->ggml_ctx, x, head_dim * num_heads, n_token, N);
             } else {
+                // NOTE: flash attention is intentionally DISABLED for the LLM
+                // text encoder. Enabling it (passing ctx->flash_attn_enabled)
+                // corrupts the conditioning — output degrades to noise/color
+                // blotches — because the causal attention_mask is not handled
+                // correctly on the Vulkan flash-attn path here (F16 mask cast /
+                // op ordering). Keep the manual F32 attention path. See the
+                // matching guard in stable-diffusion.cpp that does NOT route
+                // diffusion_flash_attn to cond_stage_model.
                 x = ggml_ext_attention_ext(ctx->ggml_ctx, ctx->backend, q, k, v, num_heads, attention_mask, true, false);  // [N, n_token, hidden_size]
             }
 

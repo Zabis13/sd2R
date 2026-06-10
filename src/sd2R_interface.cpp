@@ -106,8 +106,14 @@ static void profile_parse_log(const std::string& msg) {
     else if (msg.find("get_learned_condition completed") != std::string::npos) {
         r_profile_events.push_back({"text_encode", "end", ts});
     }
-    // Sampling setup
-    else if (msg.find("sampling using ") != std::string::npos) {
+    // Sampling start. NOTE: sd.cpp emits "sampling using <method>" very early —
+    // before text encoding even runs (it is logged right after the denoiser is
+    // set up). Using it as the sampling start makes the "sampling" interval
+    // swallow the whole text_encode stage (observed: sampling 43.40s vs sd.cpp's
+    // own 31.49s, the 11.9s gap being text_encode). The real sampling loop only
+    // begins at "generating image:", which sd.cpp logs after
+    // get_learned_condition completes — anchor the start there instead.
+    else if (msg.find("generating image:") != std::string::npos) {
         r_profile_events.push_back({"sampling", "start", ts});
     }
     // Mode markers
