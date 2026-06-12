@@ -1885,7 +1885,9 @@ struct LLMEmbedder : public Conditioner {
                                     int prompt_template_encode_start_idx,
                                     bool spell_quotes = false,
                                     int max_length    = 100000000) {
+        LOG_INFO("SD2R_DBG LLMEmbedder::encode_prompt: BEFORE tokenize");
         auto tokens_weights_mask = tokenize(prompt, prompt_attn_range, min_length, max_length, spell_quotes);
+        LOG_INFO("SD2R_DBG LLMEmbedder::encode_prompt: AFTER tokenize (%zu tokens)", std::get<0>(tokens_weights_mask).size());
         auto& tokens             = std::get<0>(tokens_weights_mask);
         auto& weights            = std::get<1>(tokens_weights_mask);
         auto& mask               = std::get<2>(tokens_weights_mask);
@@ -1909,11 +1911,13 @@ struct LLMEmbedder : public Conditioner {
             }
         }
 
+        LOG_INFO("SD2R_DBG LLMEmbedder::encode_prompt: BEFORE llm->compute (out_layers=%zu)", out_layers.size());
         auto hidden_states = llm->compute(n_threads,
                                           input_ids,
                                           attention_mask,
                                           image_embeds,
                                           out_layers);
+        LOG_INFO("SD2R_DBG LLMEmbedder::encode_prompt: AFTER llm->compute");
         GGML_ASSERT(!hidden_states.empty());
         hidden_states = apply_token_weights(std::move(hidden_states), weights);
         GGML_ASSERT(hidden_states.shape()[1] > prompt_template_encode_start_idx);
