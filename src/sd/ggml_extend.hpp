@@ -2640,6 +2640,7 @@ protected:
             return std::nullopt;
         }
         int64_t t_alloc_end = ggml_time_ms();
+        LOG_INFO("SD2R_DBG compute(%s): buffers allocated, copying input to backend", get_desc().c_str());
 
         int64_t t_copy_begin = ggml_time_ms();
         copy_data_to_backend_tensor(gf, !preserve_backend_tensor_data_map);
@@ -2648,9 +2649,11 @@ protected:
             sd_backend_cpu_set_n_threads(runtime_backend, n_threads);
         }
 
+        LOG_INFO("SD2R_DBG compute(%s): calling ggml_backend_graph_compute", get_desc().c_str());
         int64_t t_compute_begin = ggml_time_ms();
         ggml_status status      = ggml_backend_graph_compute(runtime_backend, gf);
         int64_t t_compute_end   = ggml_time_ms();
+        LOG_INFO("SD2R_DBG compute(%s): ggml_backend_graph_compute returned status=%d", get_desc().c_str(), (int)status);
         if (status != GGML_STATUS_SUCCESS) {
             LOG_ERROR("%s compute failed: %s", get_desc().c_str(), ggml_status_to_string(status));
             if (free_compute_buffer_immediately) {
