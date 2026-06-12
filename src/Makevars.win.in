@@ -20,7 +20,11 @@ PKG_CPPFLAGS = -Isd -Isd/thirdparty -Isd/tokenizers -Isd/tokenizers/vocab \
   $(PKG_CPPFLAGS_WIN)
 
 PKG_CXXFLAGS = $(OPENMP_CXXFLAGS)
-PKG_LIBS = -L$(GGMLR_LIB) -lggml $(OPENMP_CXXFLAGS) $(VULKAN_LIBS) -lpthread -lm
+# -L is double-quoted as a belt-and-suspenders guard: configure.win already
+# converts GGMLR_LIB to a short 8.3 path (no spaces), but if Windows 8.3 name
+# generation is disabled the path may still contain spaces. The quotes keep ld
+# from splitting "C:/Program Files/..." into two arguments in that case.
+PKG_LIBS = -L"$(GGMLR_LIB)" -lggml $(OPENMP_CXXFLAGS) $(VULKAN_LIBS) -lpthread -lm
 
 SD_OBJECTS = \
   sd/stable-diffusion.o \

@@ -120,11 +120,23 @@ echo "* ggmlR include: ${GGMLR_INCLUDE}"
 # For mixed C/C++ packages this creates conflicts. Solution: resolve flags
 # at configure time (same approach as RcppArmadillo and ggmlR).
 
-MAKECONF="${R_HOME}/etc/Makeconf"
 OPENMP_CXXFLAGS=""
 
-if [ -f "$MAKECONF" ]; then
-  OPENMP_CXXFLAGS=$(grep '^SHLIB_OPENMP_CXXFLAGS' "$MAKECONF" | sed 's/[^=]*= *//')
+# Ask R itself for the flag via "R CMD config". This picks the correct Makeconf
+# for the current architecture automatically (e.g. etc/x64/Makeconf on Windows),
+# so it works regardless of where the file lives or spaces in R_HOME.
+if [ -n "$R_HOME" ] && [ -x "${R_HOME}/bin/R" ]; then
+  OPENMP_CXXFLAGS=$("${R_HOME}/bin/R" CMD config SHLIB_OPENMP_CXXFLAGS 2>/dev/null)
+fi
+
+# Fallback: parse Makeconf directly (try arch subdir too) if R CMD config gave
+# nothing.
+if [ -z "$OPENMP_CXXFLAGS" ]; then
+  MAKECONF="${R_HOME}/etc/Makeconf"
+  [ -f "$MAKECONF" ] || MAKECONF="${R_HOME}/etc/x64/Makeconf"
+  if [ -f "$MAKECONF" ]; then
+    OPENMP_CXXFLAGS=$(grep '^SHLIB_OPENMP_CXXFLAGS' "$MAKECONF" | sed 's/[^=]*= *//')
+  fi
 fi
 
 if [ -n "$OPENMP_CXXFLAGS" ]; then
