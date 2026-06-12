@@ -122,22 +122,22 @@ echo "* ggmlR include: ${GGMLR_INCLUDE}"
 
 OPENMP_CXXFLAGS=""
 
-# Ask R itself for the flag via "R CMD config". This picks the correct Makeconf
-# for the current architecture automatically (e.g. etc/x64/Makeconf on Windows),
-# so it works regardless of where the file lives or spaces in R_HOME.
-if [ -n "$R_HOME" ] && [ -x "${R_HOME}/bin/R" ]; then
-  OPENMP_CXXFLAGS=$("${R_HOME}/bin/R" CMD config SHLIB_OPENMP_CXXFLAGS 2>/dev/null)
+# Parse SHLIB_OPENMP_CXXFLAGS straight from R's Makeconf. On Windows the file
+# lives in an architecture subdir (etc/x64/Makeconf), not etc/Makeconf, so try
+# both. ("R CMD config SHLIB_OPENMP_CXXFLAGS" is NOT used: on some R builds it
+# prints "ERROR: no information for variable ..." to stdout, which would then
+# be fed to the compiler as bogus input files.)
+MAKECONF="${R_HOME}/etc/x64/Makeconf"
+[ -f "$MAKECONF" ] || MAKECONF="${R_HOME}/etc/Makeconf"
+if [ -f "$MAKECONF" ]; then
+  OPENMP_CXXFLAGS=$(grep '^SHLIB_OPENMP_CXXFLAGS' "$MAKECONF" | sed 's/[^=]*= *//')
 fi
 
-# Fallback: parse Makeconf directly (try arch subdir too) if R CMD config gave
-# nothing.
-if [ -z "$OPENMP_CXXFLAGS" ]; then
-  MAKECONF="${R_HOME}/etc/Makeconf"
-  [ -f "$MAKECONF" ] || MAKECONF="${R_HOME}/etc/x64/Makeconf"
-  if [ -f "$MAKECONF" ]; then
-    OPENMP_CXXFLAGS=$(grep '^SHLIB_OPENMP_CXXFLAGS' "$MAKECONF" | sed 's/[^=]*= *//')
-  fi
-fi
+# Guard against any unexpected non-flag content (must start with '-').
+case "$OPENMP_CXXFLAGS" in
+  -*) ;;
+  *) OPENMP_CXXFLAGS="" ;;
+esac
 
 if [ -n "$OPENMP_CXXFLAGS" ]; then
   echo "* OpenMP: enabled (C++: ${OPENMP_CXXFLAGS})"
