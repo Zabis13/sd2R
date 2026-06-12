@@ -56,7 +56,10 @@ OBJECTS = $(R_INTERFACE_OBJECTS) $(SD_OBJECTS)
 
 # Force-include r_ggml_compat.h only for sd/ objects (not Rcpp files).
 # Rcpp files use R API directly and don't need stdio redirections.
-SD_COMPAT_FLAGS = -include $(GGMLR_INCLUDE)/r_ggml_compat.h
+# Use bare filename (not full path) so paths with spaces don't break -include.
+# The header is found via the -I path that R adds automatically from
+# LinkingTo: ggmlR.
+SD_COMPAT_FLAGS = -include r_ggml_compat.h
 
 sd/stable-diffusion.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
 sd/model.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
