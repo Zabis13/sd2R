@@ -10,11 +10,16 @@ VULKAN_CPPFLAGS = @VULKAN_CPPFLAGS@
 VULKAN_LIBS = @VULKAN_LIBS@
 META_CPPFLAGS = @META_CPPFLAGS@
 OPENMP_CXXFLAGS = @OPENMP_CXXFLAGS@
+# -DGGML_USE_OPENMP when OpenMP is available (resolved by configure.win).
+# Required so the ggml-cpu graph executor's OpenMP regions are compiled in;
+# without it the CPU path is single-threaded even with -fopenmp.
+OPENMP_CPPFLAGS = @OPENMP_CPPFLAGS@
 
 PKG_CPPFLAGS = -Isd -Isd/thirdparty -Isd/tokenizers -Isd/tokenizers/vocab \
   -DGGML_USE_CPU -D_GNU_SOURCE \
   -DGGML_MAX_NAME=128 \
   -DGGML_R_PACKAGE \
+  $(OPENMP_CPPFLAGS) \
   $(VULKAN_CPPFLAGS) \
   $(META_CPPFLAGS) \
   $(PKG_CPPFLAGS_WIN)

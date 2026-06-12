@@ -121,15 +121,25 @@ echo "* ggmlR include: ${GGMLR_INCLUDE}"
 # at configure time (same approach as RcppArmadillo and ggmlR).
 
 OPENMP_CXXFLAGS=""
+OPENMP_CPPFLAGS=""
 
 # Parse SHLIB_OPENMP_CXXFLAGS straight from R's Makeconf. On Windows the file
 # lives in an architecture subdir (etc/x64/Makeconf), not etc/Makeconf, so try
-# both. ("R CMD config SHLIB_OPENMP_CXXFLAGS" is NOT used: on some R builds it
-# prints "ERROR: no information for variable ..." to stdout, which would then
-# be fed to the compiler as bogus input files.)
-MAKECONF="${R_HOME}/etc/x64/Makeconf"
-[ -f "$MAKECONF" ] || MAKECONF="${R_HOME}/etc/Makeconf"
-if [ -f "$MAKECONF" ]; then
+# the arch-specific locations first, then the plain path. ("R CMD config
+# SHLIB_OPENMP_CXXFLAGS" is NOT used: on some R builds it prints "ERROR: no
+# information for variable ..." to stdout, which would then be fed to the
+# compiler as bogus input files.)
+MAKECONF=""
+for cand in \
+    "${R_HOME}/etc/x64/Makeconf" \
+    "${R_HOME}/etc${R_ARCH}/Makeconf" \
+    "${R_HOME}/etc/Makeconf"; do
+  if [ -f "$cand" ]; then
+    MAKECONF="$cand"
+    break
+  fi
+done
+if [ -n "$MAKECONF" ]; then
   OPENMP_CXXFLAGS=$(grep '^SHLIB_OPENMP_CXXFLAGS' "$MAKECONF" | sed 's/[^=]*= *//')
 fi
 
@@ -139,7 +149,13 @@ case "$OPENMP_CXXFLAGS" in
   *) OPENMP_CXXFLAGS="" ;;
 esac
 
+# When OpenMP is available, define GGML_USE_OPENMP so the ggml-cpu graph
+# executor's "#pragma omp parallel" regions are actually compiled in. Without
+# this define the CPU path runs single-threaded even though -fopenmp is passed
+# to the compiler -- the root cause of slow CPU generation on Windows. This
+# mirrors the Linux configure (OPENMP_CPPFLAGS).
 if [ -n "$OPENMP_CXXFLAGS" ]; then
+  OPENMP_CPPFLAGS="-DGGML_USE_OPENMP"
   echo "* OpenMP: enabled (C++: ${OPENMP_CXXFLAGS})"
 else
   echo "* OpenMP: not available"
@@ -194,6 +210,7 @@ sed \
   -e "s|@VULKAN_LIBS@|${VULKAN_LIBS}|g" \
   -e "s|@META_CPPFLAGS@|${META_CPPFLAGS}|g" \
   -e "s|@OPENMP_CXXFLAGS@|${OPENMP_CXXFLAGS}|g" \
+  -e "s|@OPENMP_CPPFLAGS@|${OPENMP_CPPFLAGS}|g" \
   src/Makevars.win.in > src/Makevars.win
 
 echo "* Wrote src/Makevars.win"
