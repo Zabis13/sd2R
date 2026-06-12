@@ -102,6 +102,15 @@ if [ -z "$GGMLR_LIB" ] || [ -z "$GGMLR_INCLUDE" ]; then
   exit 1
 fi
 
+# Convert to short 8.3 paths (e.g. C:/PROGRA~1/...) so spaces in the install
+# path ("C:/Program Files/...") don't break the unquoted -L flag passed to ld
+# at link time. R's shortPathName() returns backslashes; normalize to forward
+# slashes for gcc/ld/sed. If conversion yields nothing usable, keep the original.
+GGMLR_LIB_SHORT=$($RSCRIPT -e "cat(gsub('\\\\\\\\', '/', utils::shortPathName('${GGMLR_LIB}')))" 2>/dev/null)
+GGMLR_INCLUDE_SHORT=$($RSCRIPT -e "cat(gsub('\\\\\\\\', '/', utils::shortPathName('${GGMLR_INCLUDE}')))" 2>/dev/null)
+[ -n "$GGMLR_LIB_SHORT" ] && GGMLR_LIB="$GGMLR_LIB_SHORT"
+[ -n "$GGMLR_INCLUDE_SHORT" ] && GGMLR_INCLUDE="$GGMLR_INCLUDE_SHORT"
+
 echo "* ggmlR lib: ${GGMLR_LIB}"
 echo "* ggmlR include: ${GGMLR_INCLUDE}"
 
