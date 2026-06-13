@@ -1856,16 +1856,21 @@ struct LLMEmbedder : public Conditioner {
 
         std::vector<int> tokens;
         std::vector<float> weights;
+        LOG_INFO("SD2R_DBG tokenize: %zu attention chunk(s), BEFORE encode loop", parsed_attention.size());
         for (const auto& item : parsed_attention) {
             const std::string& curr_text = item.first;
             float curr_weight            = item.second;
+            LOG_INFO("SD2R_DBG tokenize: BEFORE encode chunk len=%zu", curr_text.size());
             std::vector<int> curr_tokens = tokenizer->encode(curr_text, nullptr);
+            LOG_INFO("SD2R_DBG tokenize: AFTER encode chunk -> %zu tokens", curr_tokens.size());
             tokens.insert(tokens.end(), curr_tokens.begin(), curr_tokens.end());
             weights.insert(weights.end(), curr_tokens.size(), curr_weight);
         }
 
         std::vector<float> mask;
+        LOG_INFO("SD2R_DBG tokenize: BEFORE pad_tokens (%zu tokens)", tokens.size());
         tokenizer->pad_tokens(tokens, &weights, &mask, min_length, max_length);
+        LOG_INFO("SD2R_DBG tokenize: AFTER pad_tokens (%zu tokens)", tokens.size());
 
         // for (int i = 0; i < tokens.size(); i++) {
         //     std::cout << tokens[i] << ":" << weights[i] << ", " << i << std::endl;
