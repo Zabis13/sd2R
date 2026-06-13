@@ -2608,6 +2608,7 @@ protected:
         int64_t t_execute_begin              = ggml_time_ms();
         const bool use_partial_param_offload = !runtime_param_tensors.empty();
         int64_t t_offload_begin              = ggml_time_ms();
+        LOG_INFO("SD2R_DBG compute(%s): BEFORE offload params (nodes=%d)", get_desc().c_str(), ggml_graph_n_nodes(gf));
         if (use_partial_param_offload) {
             if (!offload_partial_params(runtime_param_tensors)) {
                 LOG_ERROR("%s offload partial params to runtime backend failed", get_desc().c_str());
@@ -2620,6 +2621,7 @@ protected:
             }
         }
         int64_t t_offload_end = ggml_time_ms();
+        LOG_INFO("SD2R_DBG compute(%s): AFTER offload, BEFORE alloc_compute_buffer", get_desc().c_str());
 
         int64_t t_alloc_begin = ggml_time_ms();
         if (!alloc_compute_buffer(gf)) {
@@ -2629,6 +2631,7 @@ protected:
             }
             return std::nullopt;
         }
+        LOG_INFO("SD2R_DBG compute(%s): AFTER alloc_compute_buffer, BEFORE gallocr_alloc_graph", get_desc().c_str());
 
         if (!ggml_gallocr_alloc_graph(compute_allocr, gf)) {
             LOG_ERROR("%s alloc compute graph failed", get_desc().c_str());
