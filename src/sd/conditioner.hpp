@@ -1829,10 +1829,12 @@ struct LLMEmbedder : public Conditioner {
                 parsed_attention.emplace_back(text.substr(0, attn_range.first), 1.f);
             }
             if (attn_range.second - attn_range.first > 0) {
+                LOG_INFO("SD2R_DBG tokenize: BEFORE parse_prompt_attention");
                 auto new_parsed_attention = parse_prompt_attention(text.substr(attn_range.first, attn_range.second - attn_range.first));
                 if (spell_quotes) {
                     new_parsed_attention = split_quotation_attention(new_parsed_attention);
                 }
+                LOG_INFO("SD2R_DBG tokenize: AFTER parse_prompt_attention (%zu chunks)", new_parsed_attention.size());
                 parsed_attention.insert(parsed_attention.end(),
                                         new_parsed_attention.begin(),
                                         new_parsed_attention.end());

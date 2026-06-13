@@ -6,7 +6,6 @@
 #include <exception>
 #include <fstream>
 #include <locale>
-#include <regex>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -819,6 +818,13 @@ sd::Tensor<float> clip_preprocess(const sd::Tensor<float>& image, int target_wid
 //  [', sun, ', 1.1],
 //  ['sky', 1.4641000000000006],
 //  ['.', 1.1]]
+// Hand-rolled tokenizer for the prompt-attention grammar. This replaces the
+// previous std::regex implementation: libstdc++'s std::regex is recursive and
+// overflows the stack on some inputs under MinGW (Rtools on Windows), crashing
+// the process silently. The scan below reproduces the exact alternation order
+// of the original pattern:
+//   \\( \\) \\[ \\] \\\\ \\ | ( | [ | :<num>) | ) | ] | \bBREAK\b
+//   | [^\\()\[\]:B]+ | : | \bB
 std::vector<std::pair<std::string, float>> parse_prompt_attention(const std::string& text) {
     std::vector<std::pair<std::string, float>> res;
     std::vector<int> round_brackets;
@@ -827,46 +833,122 @@ std::vector<std::pair<std::string, float>> parse_prompt_attention(const std::str
     float round_bracket_multiplier  = 1.1f;
     float square_bracket_multiplier = 1 / 1.1f;
 
-    std::regex re_attention(R"(\\\(|\\\)|\\\[|\\\]|\\\\|\\|\(|\[|:([+-]?[.\d]+)\)|\)|\]|\bBREAK\b|[^\\()\[\]:B]+|:|\bB)");
-    std::regex re_break(R"(\s*\bBREAK\b\s*)");
-
     auto multiply_range = [&](int start_position, float multiplier) {
         for (size_t p = (size_t)start_position; p < res.size(); ++p) {
             res[p].second *= multiplier;
         }
     };
 
-    std::smatch m, m2;
-    std::string remaining_text = text;
+    // \w in std::regex (ECMAScript, default locale) is [A-Za-z0-9_].
+    auto is_word_char = [](char c) {
+        unsigned char uc = static_cast<unsigned char>(c);
+        return (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z') ||
+               (uc >= '0' && uc <= '9') || uc == '_';
+    };
 
-    while (std::regex_search(remaining_text, m, re_attention)) {
-        std::string text   = m[0];
-        std::string weight = m[1];
+    const size_t n = text.size();
+    size_t i       = 0;
+    while (i < n) {
+        char c = text[i];
 
-        if (text == "(") {
-            round_brackets.push_back((int)res.size());
-        } else if (text == "[") {
-            square_brackets.push_back((int)res.size());
-        } else if (!weight.empty()) {
-            if (!round_brackets.empty()) {
-                multiply_range(round_brackets.back(), std::stof(weight));
-                round_brackets.pop_back();
+        // \\( \\) \\[ \\] \\\\  -> emit the escaped char as literal text;
+        // a lone trailing '\' (\\) -> emit nothing (regex matched, no append).
+        if (c == '\\') {
+            if (i + 1 < n) {
+                char nx = text[i + 1];
+                if (nx == '(' || nx == ')' || nx == '[' || nx == ']' || nx == '\\') {
+                    res.push_back({std::string(1, nx), 1.0f});
+                    i += 2;
+                    continue;
+                }
             }
-        } else if (text == ")" && !round_brackets.empty()) {
-            multiply_range(round_brackets.back(), round_bracket_multiplier);
-            round_brackets.pop_back();
-        } else if (text == "]" && !square_brackets.empty()) {
-            multiply_range(square_brackets.back(), square_bracket_multiplier);
-            square_brackets.pop_back();
-        } else if (text == "\\(") {
-            res.push_back({text.substr(1), 1.0f});
-        } else if (std::regex_search(text, m2, re_break)) {
-            res.push_back({"BREAK", -1.0f});
-        } else {
-            res.push_back({text, 1.0f});
+            // bare '\'
+            i += 1;
+            continue;
         }
 
-        remaining_text = m.suffix();
+        if (c == '(') {
+            round_brackets.push_back((int)res.size());
+            i += 1;
+            continue;
+        }
+        if (c == '[') {
+            square_brackets.push_back((int)res.size());
+            i += 1;
+            continue;
+        }
+
+        // :([+-]?[.\d]+)\)  -> weighted close of a round bracket group
+        if (c == ':') {
+            size_t j = i + 1;
+            if (j < n && (text[j] == '+' || text[j] == '-')) {
+                ++j;
+            }
+            size_t num_start = j;
+            while (j < n && (text[j] == '.' || (text[j] >= '0' && text[j] <= '9'))) {
+                ++j;
+            }
+            if (j > num_start && j < n && text[j] == ')') {
+                std::string weight = text.substr(i + 1, j - (i + 1));
+                if (!round_brackets.empty()) {
+                    multiply_range(round_brackets.back(), std::stof(weight));
+                    round_brackets.pop_back();
+                }
+                i = j + 1;
+                continue;
+            }
+            // lone ':'  -> treated as text (next branch in the original alt)
+            res.push_back({":", 1.0f});
+            i += 1;
+            continue;
+        }
+
+        if (c == ')') {
+            if (!round_brackets.empty()) {
+                multiply_range(round_brackets.back(), round_bracket_multiplier);
+                round_brackets.pop_back();
+            }
+            // unmatched ')' is consumed and dropped (regex matched, no append)
+            i += 1;
+            continue;
+        }
+        if (c == ']') {
+            if (!square_brackets.empty()) {
+                multiply_range(square_brackets.back(), square_bracket_multiplier);
+                square_brackets.pop_back();
+            }
+            i += 1;
+            continue;
+        }
+
+        // \bBREAK\b
+        if (c == 'B') {
+            bool word_before = (i > 0) && is_word_char(text[i - 1]);
+            if (!word_before && text.compare(i, 5, "BREAK") == 0) {
+                bool word_after = (i + 5 < n) && is_word_char(text[i + 5]);
+                if (!word_after) {
+                    res.push_back({"BREAK", -1.0f});
+                    i += 5;
+                    continue;
+                }
+            }
+            // \bB : a lone 'B' that isn't the start of BREAK
+            res.push_back({"B", 1.0f});
+            i += 1;
+            continue;
+        }
+
+        // [^\\()\[\]:B]+  -> a run of ordinary text characters
+        size_t start = i;
+        while (i < n) {
+            char d = text[i];
+            if (d == '\\' || d == '(' || d == ')' || d == '[' || d == ']' ||
+                d == ':' || d == 'B') {
+                break;
+            }
+            ++i;
+        }
+        res.push_back({text.substr(start, i - start), 1.0f});
     }
 
     for (int pos : round_brackets) {
