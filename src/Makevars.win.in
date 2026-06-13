@@ -29,7 +29,12 @@ PKG_CXXFLAGS = $(OPENMP_CXXFLAGS)
 # converts GGMLR_LIB to a short 8.3 path (no spaces), but if Windows 8.3 name
 # generation is disabled the path may still contain spaces. The quotes keep ld
 # from splitting "C:/Program Files/..." into two arguments in that case.
-PKG_LIBS = -L"$(GGMLR_LIB)" -lggml $(OPENMP_CXXFLAGS) $(VULKAN_LIBS) -lpthread -lm
+# -static-libstdc++ -static-libgcc: must match ggmlR's Makevars.win.in. sd2R links
+# libggml.a (-lggml) statically; if sd2R and that code link a DIFFERENT libstdc++
+# than each other (or than the Vulkan ICD), operator new/delete cross a heap
+# boundary and crash ~50/50 during Flux2 load (ggml_backend_buffer_init). Static
+# C++ runtime gives the final sd2R.dll one libstdc++ for all linked-in objects.
+PKG_LIBS = -L"$(GGMLR_LIB)" -lggml $(OPENMP_CXXFLAGS) $(VULKAN_LIBS) -lpthread -lm -static-libstdc++ -static-libgcc
 
 SD_OBJECTS = \
   sd/stable-diffusion.o \
