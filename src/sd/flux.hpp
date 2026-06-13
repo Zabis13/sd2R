@@ -1468,7 +1468,9 @@ namespace Flux {
                                             ref_latents,
                                             skip_layers);
 
+            LOG_INFO("SD2R_DBG flux.build_graph: BEFORE ggml_build_forward_expand");
             ggml_build_forward_expand(gf, out);
+            LOG_INFO("SD2R_DBG flux.build_graph: AFTER ggml_build_forward_expand (nodes=%d)", ggml_graph_n_nodes(gf));
 
             return gf;
         }
