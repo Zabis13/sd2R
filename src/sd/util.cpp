@@ -644,10 +644,22 @@ void log_printf(sd_log_level_t level, const char* file, int line, const char* fo
     if (written >= 0 && written < LOG_BUFFER_SIZE) {
         vsnprintf(log_buffer + written, LOG_BUFFER_SIZE - written, format, args);
     }
+    // Upstream sd.cpp does `if (log_buffer[len-1] != '\n') strncat(...)`, which has
+    // two UB paths that crash ~50/50 under the R bridge (where sd_log_cb does
+    // std::string(text), reading until NUL): (1) len==0 -> log_buffer[(size_t)-1]
+    // OOB read; (2) len>=LOG_BUFFER_SIZE -> LOG_BUFFER_SIZE-len wraps to a huge
+    // size_t -> strncat overruns the buffer, leaving it non-NUL-terminated.
+    // Append the newline by direct indexing instead, with explicit bounds.
     size_t len = strlen(log_buffer);
-    if (log_buffer[len - 1] != '\n') {
-        strncat(log_buffer, "\n", LOG_BUFFER_SIZE - len);
+    if (len == 0) {
+        va_end(args);
+        return;
     }
+    if (len < LOG_BUFFER_SIZE - 1 && log_buffer[len - 1] != '\n') {
+        log_buffer[len]     = '\n';
+        log_buffer[len + 1] = '\0';
+    }
+    log_buffer[LOG_BUFFER_SIZE] = '\0'; // guarantee terminator in the +1 guard byte
 
     if (sd_log_cb) {
         sd_log_cb(level, log_buffer, sd_log_cb_data);
