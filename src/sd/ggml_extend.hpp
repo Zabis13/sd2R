@@ -1814,7 +1814,12 @@ protected:
 
     void alloc_compute_ctx() {
         ggml_init_params params;
-        params.mem_size   = static_cast<size_t>(ggml_tensor_overhead() * MAX_GRAPH_SIZE + ggml_graph_overhead());
+        // Graphs may be created with up to MAX_GRAPH_SIZE nodes (e.g. flux uses
+        // FLUX_GRAPH_SIZE=10240 > GGML_DEFAULT_GRAPH_SIZE=8192). ggml_graph_overhead()
+        // only reserves space for a default-sized graph, so a larger graph overflowed
+        // the context pool -> ggml_new_graph_custom corrupted the heap and the process
+        // died silently on Windows/MinGW. Reserve overhead for the largest graph.
+        params.mem_size   = static_cast<size_t>(ggml_tensor_overhead() * MAX_GRAPH_SIZE + ggml_graph_overhead_custom(MAX_GRAPH_SIZE, false));
         params.mem_buffer = nullptr;
         params.no_alloc   = true;
 
