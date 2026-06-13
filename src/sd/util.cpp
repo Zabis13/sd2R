@@ -847,40 +847,40 @@ std::vector<std::pair<std::string, float>> parse_prompt_attention(const std::str
     };
 
     const size_t n = text.size();
-    size_t i       = 0;
-    while (i < n) {
-        char c = text[i];
+    size_t pos     = 0;
+    while (pos < n) {
+        char c = text[pos];
 
         // \\( \\) \\[ \\] \\\\  -> emit the escaped char as literal text;
         // a lone trailing '\' (\\) -> emit nothing (regex matched, no append).
         if (c == '\\') {
-            if (i + 1 < n) {
-                char nx = text[i + 1];
+            if (pos + 1 < n) {
+                char nx = text[pos + 1];
                 if (nx == '(' || nx == ')' || nx == '[' || nx == ']' || nx == '\\') {
                     res.push_back({std::string(1, nx), 1.0f});
-                    i += 2;
+                    pos += 2;
                     continue;
                 }
             }
             // bare '\'
-            i += 1;
+            pos += 1;
             continue;
         }
 
         if (c == '(') {
             round_brackets.push_back((int)res.size());
-            i += 1;
+            pos += 1;
             continue;
         }
         if (c == '[') {
             square_brackets.push_back((int)res.size());
-            i += 1;
+            pos += 1;
             continue;
         }
 
         // :([+-]?[.\d]+)\)  -> weighted close of a round bracket group
         if (c == ':') {
-            size_t j = i + 1;
+            size_t j = pos + 1;
             if (j < n && (text[j] == '+' || text[j] == '-')) {
                 ++j;
             }
@@ -889,17 +889,17 @@ std::vector<std::pair<std::string, float>> parse_prompt_attention(const std::str
                 ++j;
             }
             if (j > num_start && j < n && text[j] == ')') {
-                std::string weight = text.substr(i + 1, j - (i + 1));
+                std::string weight = text.substr(pos + 1, j - (pos + 1));
                 if (!round_brackets.empty()) {
                     multiply_range(round_brackets.back(), std::stof(weight));
                     round_brackets.pop_back();
                 }
-                i = j + 1;
+                pos = j + 1;
                 continue;
             }
             // lone ':'  -> treated as text (next branch in the original alt)
             res.push_back({":", 1.0f});
-            i += 1;
+            pos += 1;
             continue;
         }
 
@@ -909,7 +909,7 @@ std::vector<std::pair<std::string, float>> parse_prompt_attention(const std::str
                 round_brackets.pop_back();
             }
             // unmatched ')' is consumed and dropped (regex matched, no append)
-            i += 1;
+            pos += 1;
             continue;
         }
         if (c == ']') {
@@ -917,38 +917,38 @@ std::vector<std::pair<std::string, float>> parse_prompt_attention(const std::str
                 multiply_range(square_brackets.back(), square_bracket_multiplier);
                 square_brackets.pop_back();
             }
-            i += 1;
+            pos += 1;
             continue;
         }
 
         // \bBREAK\b
         if (c == 'B') {
-            bool word_before = (i > 0) && is_word_char(text[i - 1]);
-            if (!word_before && text.compare(i, 5, "BREAK") == 0) {
-                bool word_after = (i + 5 < n) && is_word_char(text[i + 5]);
+            bool word_before = (pos > 0) && is_word_char(text[pos - 1]);
+            if (!word_before && text.compare(pos, 5, "BREAK") == 0) {
+                bool word_after = (pos + 5 < n) && is_word_char(text[pos + 5]);
                 if (!word_after) {
                     res.push_back({"BREAK", -1.0f});
-                    i += 5;
+                    pos += 5;
                     continue;
                 }
             }
             // \bB : a lone 'B' that isn't the start of BREAK
             res.push_back({"B", 1.0f});
-            i += 1;
+            pos += 1;
             continue;
         }
 
         // [^\\()\[\]:B]+  -> a run of ordinary text characters
-        size_t start = i;
-        while (i < n) {
-            char d = text[i];
+        size_t start = pos;
+        while (pos < n) {
+            char d = text[pos];
             if (d == '\\' || d == '(' || d == ')' || d == '[' || d == ']' ||
                 d == ':' || d == 'B') {
                 break;
             }
-            ++i;
+            ++pos;
         }
-        res.push_back({text.substr(start, i - start), 1.0f});
+        res.push_back({text.substr(start, pos - start), 1.0f});
     }
 
     for (int pos : round_brackets) {
