@@ -172,13 +172,15 @@ CLIP-L + T5-XXL text encoders, VAE. `sample_steps = 10`.
 
 Qwen3 LLM text encoder + FLUX.2 VAE. `sample_steps = 4`.
 
-| Test | AMD RX 9070 (16 GB) |
-|---|---|
-| 1. 768x768 direct | 13.58 s |
-| 2. 1024x1024 tiled VAE | 32.51 s |
-| 3. 2048x1024 highres fix | 45.01 s |
-| 4. img2img 768x768 direct | 8.08 s |
-| 5. 1024x1024 direct | 33.31 s |
+RTX 3090 system: CPU Xeon E5-2666 v3, 32 GB RAM (Windows).
+
+| Test | AMD RX 9070 (16 GB) | RTX 3090 (24 GB) |
+|---|---|---|
+| 1. 768x768 direct | 13.58 s | 11.62 s |
+| 2. 1024x1024 tiled VAE | 32.51 s | 15.05 s |
+| 3. 2048x1024 highres fix | 45.01 s | 35.22 s |
+| 4. img2img 768x768 direct | 8.08 s | 9.11 s |
+| 5. 1024x1024 direct | 33.31 s | 15.41 s |
 
 ### Model size comparison
 
