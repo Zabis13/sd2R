@@ -1270,20 +1270,26 @@ struct FluxCLIPEmbedder : public Conditioner {
         std::vector<float> clip_l_weights;
         std::vector<int> t5_tokens;
         std::vector<float> t5_weights;
+        LOG_INFO("SD2R_DBG FluxCLIP::tokenize: BEFORE encode loop (n_items=%zu)", parsed_attention.size());
         for (const auto& item : parsed_attention) {
             const std::string& curr_text = item.first;
             float curr_weight            = item.second;
             if (clip_l) {
+                LOG_INFO("SD2R_DBG FluxCLIP::tokenize: BEFORE clip_l encode");
                 std::vector<int> curr_tokens = clip_l_tokenizer.encode(curr_text, on_new_token_cb);
+                LOG_INFO("SD2R_DBG FluxCLIP::tokenize: AFTER clip_l encode (n=%zu)", curr_tokens.size());
                 clip_l_tokens.insert(clip_l_tokens.end(), curr_tokens.begin(), curr_tokens.end());
                 clip_l_weights.insert(clip_l_weights.end(), curr_tokens.size(), curr_weight);
             }
             if (t5) {
+                LOG_INFO("SD2R_DBG FluxCLIP::tokenize: BEFORE t5 encode");
                 std::vector<int> curr_tokens = t5_tokenizer.encode(curr_text);
+                LOG_INFO("SD2R_DBG FluxCLIP::tokenize: AFTER t5 encode (n=%zu)", curr_tokens.size());
                 t5_tokens.insert(t5_tokens.end(), curr_tokens.begin(), curr_tokens.end());
                 t5_weights.insert(t5_weights.end(), curr_tokens.size(), curr_weight);
             }
         }
+        LOG_INFO("SD2R_DBG FluxCLIP::tokenize: AFTER encode loop, BEFORE pad");
 
         if (clip_l) {
             clip_l_tokenizer.pad_tokens(clip_l_tokens, &clip_l_weights, nullptr, 77, 77, true);
@@ -1291,6 +1297,7 @@ struct FluxCLIPEmbedder : public Conditioner {
         if (t5) {
             t5_tokenizer.pad_tokens(t5_tokens, &t5_weights, nullptr, min_length, max_length, true);
         }
+        LOG_INFO("SD2R_DBG FluxCLIP::tokenize: AFTER pad, RETURN");
 
         // for (int i = 0; i < clip_l_tokens.size(); i++) {
         //     std::cout << clip_l_tokens[i] << ":" << clip_l_weights[i] << ", ";
