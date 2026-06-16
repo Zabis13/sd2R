@@ -32,7 +32,10 @@ std::vector<std::pair<int, std::u32string>> BPETokenizer::bytes_to_unicode() {
 }
 
 std::vector<std::string> BPETokenizer::token_split(const std::string& text) const {
-    return ::token_split(text);
+    LOG_INFO("SD2R_DBG BPETokenizer::token_split wrapper: ENTER (text.size=%zu), BEFORE ::token_split", text.size());
+    auto r = ::token_split(text);
+    LOG_INFO("SD2R_DBG BPETokenizer::token_split wrapper: AFTER ::token_split (n=%zu)", r.size());
+    return r;
 }
 
 std::vector<std::u32string> BPETokenizer::split_utf32(const std::string& text, char32_t delimiter) {
