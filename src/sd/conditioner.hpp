@@ -1323,10 +1323,12 @@ struct FluxCLIPEmbedder : public Conditioner {
         sd::Tensor<float> pooled;         // [768,]
 
         size_t chunk_count = std::max(clip_l_tokens.size() > 0 ? chunk_len : 0, t5_tokens.size()) / chunk_len;
+        LOG_INFO("SD2R_DBG FluxCLIP::common: ENTER, chunk_count=%zu", chunk_count);
         for (int chunk_idx = 0; chunk_idx < chunk_count; chunk_idx++) {
             // clip_l
             if (chunk_idx == 0) {
                 if (clip_l) {
+                    LOG_INFO("SD2R_DBG FluxCLIP::common: BEFORE clip_l->compute (chunk=%d)", chunk_idx);
                     size_t chunk_len_l = 77;
                     std::vector<int> chunk_tokens(clip_l_tokens.begin(),
                                                   clip_l_tokens.begin() + chunk_len_l);
@@ -1346,6 +1348,7 @@ struct FluxCLIPEmbedder : public Conditioner {
                                              max_token_idx,
                                              true,
                                              clip_skip);
+                    LOG_INFO("SD2R_DBG FluxCLIP::common: AFTER clip_l->compute");
                     GGML_ASSERT(!pooled.empty());
                 } else {
                     pooled = sd::Tensor<float>::zeros({768});
@@ -1355,6 +1358,7 @@ struct FluxCLIPEmbedder : public Conditioner {
             // t5
             sd::Tensor<float> chunk_hidden_states;
             if (t5) {
+                LOG_INFO("SD2R_DBG FluxCLIP::common: BEFORE t5->compute (chunk=%d)", chunk_idx);
                 std::vector<int> chunk_tokens(t5_tokens.begin() + chunk_idx * chunk_len,
                                               t5_tokens.begin() + (chunk_idx + 1) * chunk_len);
                 std::vector<float> chunk_weights(t5_weights.begin() + chunk_idx * chunk_len,
@@ -1364,6 +1368,7 @@ struct FluxCLIPEmbedder : public Conditioner {
                 chunk_hidden_states = t5->compute(n_threads,
                                                   input_ids,
                                                   sd::Tensor<float>());
+                LOG_INFO("SD2R_DBG FluxCLIP::common: AFTER t5->compute");
                 GGML_ASSERT(!chunk_hidden_states.empty());
                 chunk_hidden_states = ::apply_token_weights(std::move(chunk_hidden_states), chunk_weights);
                 if (zero_out_masked) {
@@ -1390,7 +1395,9 @@ struct FluxCLIPEmbedder : public Conditioner {
 
     SDCondition get_learned_condition(int n_threads,
                                       const ConditionerParams& conditioner_params) override {
+        LOG_INFO("SD2R_DBG FluxCLIP::get_learned_condition: ENTER, BEFORE tokenize");
         auto tokens_and_weights = tokenize(conditioner_params.text, chunk_len, chunk_len);
+        LOG_INFO("SD2R_DBG FluxCLIP::get_learned_condition: AFTER tokenize, BEFORE common");
         return get_learned_condition_common(n_threads,
                                             tokens_and_weights,
                                             conditioner_params.clip_skip,
