@@ -1876,10 +1876,8 @@ protected:
     }
 
     ggml_cgraph* get_compute_graph(get_graph_cb_t get_graph) {
-        LOG_INFO("SD2R_DBG get_compute_graph(%s): BEFORE get_graph() callback", get_desc().c_str());
         prepare_build_in_tensor_before();
         ggml_cgraph* gf = get_graph();
-        LOG_INFO("SD2R_DBG get_compute_graph(%s): AFTER get_graph() callback", get_desc().c_str());
         if (ggml_graph_n_nodes(gf) > 0) {
             auto result = ggml_graph_node(gf, -1);
             ggml_set_name(result, final_result_name.c_str());
@@ -1902,9 +1900,7 @@ protected:
                                ggml_cgraph** gf_out) {
         GGML_ASSERT(gf_out != nullptr);
 
-        LOG_INFO("SD2R_DBG prepare_compute_graph(%s): BEFORE reset_compute_ctx", get_desc().c_str());
         reset_compute_ctx();
-        LOG_INFO("SD2R_DBG prepare_compute_graph(%s): AFTER reset_compute_ctx, BEFORE get_compute_graph", get_desc().c_str());
         ggml_cgraph* gf = get_compute_graph(get_graph);
         if (gf == nullptr) {
             free_compute_ctx();
@@ -2123,12 +2119,6 @@ protected:
     }
 
     bool offload_all_params() {
-        LOG_INFO("SD2R_DBG offload_all_params(%s): params_backend==runtime_backend? %d, params_on_runtime_backend=%d, params_backend=%s, runtime_backend=%s",
-                 get_desc().c_str(),
-                 (int)(params_backend == runtime_backend),
-                 (int)params_on_runtime_backend,
-                 params_backend ? ggml_backend_name(params_backend) : "<null>",
-                 runtime_backend ? ggml_backend_name(runtime_backend) : "<null>");
         restore_partial_params();
         if (params_backend == runtime_backend) {
             return true;
@@ -2136,7 +2126,6 @@ protected:
         if (params_on_runtime_backend) {
             return true;
         }
-        LOG_INFO("SD2R_DBG offload_all_params(%s): TAKING FULL OFFLOAD PATH (re-copying all weights to GPU)", get_desc().c_str());
         GGML_ASSERT(runtime_params_buffer == nullptr);
         int64_t t0         = ggml_time_ms();
         size_t num_tensors = ggml_tensor_num(offload_ctx);
@@ -2635,7 +2624,6 @@ protected:
         int64_t t_execute_begin              = ggml_time_ms();
         const bool use_partial_param_offload = !runtime_param_tensors.empty();
         int64_t t_offload_begin              = ggml_time_ms();
-        LOG_INFO("SD2R_DBG compute(%s): BEFORE offload params (nodes=%d)", get_desc().c_str(), ggml_graph_n_nodes(gf));
         if (use_partial_param_offload) {
             if (!offload_partial_params(runtime_param_tensors)) {
                 LOG_ERROR("%s offload partial params to runtime backend failed", get_desc().c_str());
@@ -2648,7 +2636,6 @@ protected:
             }
         }
         int64_t t_offload_end = ggml_time_ms();
-        LOG_INFO("SD2R_DBG compute(%s): AFTER offload, BEFORE alloc_compute_buffer", get_desc().c_str());
 
         int64_t t_alloc_begin = ggml_time_ms();
         if (!alloc_compute_buffer(gf)) {
@@ -2658,7 +2645,6 @@ protected:
             }
             return std::nullopt;
         }
-        LOG_INFO("SD2R_DBG compute(%s): AFTER alloc_compute_buffer, BEFORE gallocr_alloc_graph", get_desc().c_str());
 
         if (!ggml_gallocr_alloc_graph(compute_allocr, gf)) {
             LOG_ERROR("%s alloc compute graph failed", get_desc().c_str());
@@ -2670,7 +2656,6 @@ protected:
             return std::nullopt;
         }
         int64_t t_alloc_end = ggml_time_ms();
-        LOG_INFO("SD2R_DBG compute(%s): buffers allocated, copying input to backend", get_desc().c_str());
 
         int64_t t_copy_begin = ggml_time_ms();
         copy_data_to_backend_tensor(gf, !preserve_backend_tensor_data_map);
@@ -2679,11 +2664,9 @@ protected:
             sd_backend_cpu_set_n_threads(runtime_backend, n_threads);
         }
 
-        LOG_INFO("SD2R_DBG compute(%s): calling ggml_backend_graph_compute", get_desc().c_str());
         int64_t t_compute_begin = ggml_time_ms();
         ggml_status status      = ggml_backend_graph_compute(runtime_backend, gf);
         int64_t t_compute_end   = ggml_time_ms();
-        LOG_INFO("SD2R_DBG compute(%s): ggml_backend_graph_compute returned status=%d", get_desc().c_str(), (int)status);
         if (status != GGML_STATUS_SUCCESS) {
             LOG_ERROR("%s compute failed: %s", get_desc().c_str(), ggml_status_to_string(status));
             if (free_compute_buffer_immediately) {
@@ -3178,13 +3161,11 @@ public:
                                          int n_threads,
                                          bool free_compute_buffer_immediately,
                                          bool no_return = false) {
-        LOG_INFO("SD2R_DBG compute(%s): ENTER, BEFORE prepare_compute_graph", get_desc().c_str());
         ggml_cgraph* gf = nullptr;
         if (!prepare_compute_graph(get_graph, &gf)) {
             return std::nullopt;
         }
         GGML_ASSERT(gf != nullptr);
-        LOG_INFO("SD2R_DBG compute(%s): AFTER prepare_compute_graph (nodes=%d)", get_desc().c_str(), ggml_graph_n_nodes(gf));
 
         if (can_attempt_graph_cut_segmented_compute()) {
             GraphCutPlan plan;

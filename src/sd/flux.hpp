@@ -859,11 +859,9 @@ namespace Flux {
             auto txt_in      = std::dynamic_pointer_cast<Linear>(blocks["txt_in"]);
             auto final_layer = std::dynamic_pointer_cast<LastLayer>(blocks["final_layer"]);
 
-            LOG_INFO("SD2R_DBG flux.forward_orig: enter");
             if (img_in) {
                 img = img_in->forward(ctx, img);
             }
-            LOG_INFO("SD2R_DBG flux.forward_orig: after img_in");
 
             ggml_tensor* vec;
             ggml_tensor* txt_img_mask = nullptr;
@@ -927,9 +925,7 @@ namespace Flux {
                 txt = semantic_txt_norm->forward(ctx, txt);
             }
 
-            LOG_INFO("SD2R_DBG flux.forward_orig: after vec/modulation");
             txt = txt_in->forward(ctx, txt);
-            LOG_INFO("SD2R_DBG flux.forward_orig: after txt_in, entering %d double blocks", params.depth);
             sd::ggml_graph_cut::mark_graph_cut(img, "flux.prelude", "img");
             sd::ggml_graph_cut::mark_graph_cut(txt, "flux.prelude", "txt");
             sd::ggml_graph_cut::mark_graph_cut(vec, "flux.prelude", "vec");
@@ -946,10 +942,8 @@ namespace Flux {
                 txt          = img_txt.second;  // [N, n_txt_token, hidden_size]
                 sd::ggml_graph_cut::mark_graph_cut(img, "flux.double_blocks." + std::to_string(i), "img");
                 sd::ggml_graph_cut::mark_graph_cut(txt, "flux.double_blocks." + std::to_string(i), "txt");
-                LOG_INFO("SD2R_DBG flux.forward_orig: built double_block %d", i);
             }
 
-            LOG_INFO("SD2R_DBG flux.forward_orig: after double blocks, entering %d single blocks", params.depth_single_blocks);
             auto txt_img = ggml_concat(ctx->ggml_ctx, txt, img, 1);  // [N, n_txt_token + n_img_token, hidden_size]
             for (int i = 0; i < params.depth_single_blocks; i++) {
                 if (skip_layers.size() > 0 && std::find(skip_layers.begin(), skip_layers.end(), i + params.depth) != skip_layers.end()) {
@@ -959,10 +953,8 @@ namespace Flux {
 
                 txt_img = block->forward(ctx, txt_img, vec, pe, txt_img_mask, ss_mods);
                 sd::ggml_graph_cut::mark_graph_cut(txt_img, "flux.single_blocks." + std::to_string(i), "txt_img");
-                LOG_INFO("SD2R_DBG flux.forward_orig: built single_block %d", i);
             }
 
-            LOG_INFO("SD2R_DBG flux.forward_orig: after single blocks, before final_layer");
             img = ggml_view_3d(ctx->ggml_ctx,
                                txt_img,
                                txt_img->ne[0],
@@ -975,7 +967,6 @@ namespace Flux {
             if (final_layer) {
                 img = final_layer->forward(ctx, img, vec);  // (N, T, patch_size ** 2 * out_channels)
             }
-            LOG_INFO("SD2R_DBG flux.forward_orig: graph build COMPLETE (return)");
 
             return img;
         }
@@ -1468,9 +1459,7 @@ namespace Flux {
                                             ref_latents,
                                             skip_layers);
 
-            LOG_INFO("SD2R_DBG flux.build_graph: BEFORE ggml_build_forward_expand");
             ggml_build_forward_expand(gf, out);
-            LOG_INFO("SD2R_DBG flux.build_graph: AFTER ggml_build_forward_expand (nodes=%d)", ggml_graph_n_nodes(gf));
 
             return gf;
         }

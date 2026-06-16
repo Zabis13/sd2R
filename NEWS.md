@@ -1,5 +1,6 @@
 # sd2R 0.2.1
 
+* **Diagnostic logging**: `sd_ctx()` now logs all behavioural parameters from R at startup, the resolved weight-residency mode (resident vs streamed when `offload_params_to_cpu`/`params_backend` put params on a different backend), and a running summary of weight data re-uploaded to the GPU each pass — making silent performance regimes visible.
 * FLUX.2 (Klein 4B) support via `model_type = "flux2"`, with auto-detection from tensors/filename.
 * New `llm_path` argument in `sd_ctx()` for LLM text encoders (Qwen3 for FLUX.2 Klein, Mistral-Small for full FLUX.2).
 * Inpainting: new `mask` argument in `sd_img2img()` regenerates only the masked region. Accepts a PNG path, a numeric matrix, or an SD image (white = generate). Works on plain SD/SDXL/FLUX 1/2 weights via the denoise mask. New helper `sd_load_mask()`.

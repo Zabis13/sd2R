@@ -2541,9 +2541,7 @@ public:
             return diffusion_model->compute(n_threads, diffusion_params);
         };
 
-        LOG_INFO("SD2R_DBG denoise step: BEFORE first diffusion_model->compute (run_condition)");
         sd::Tensor<float> out_cond = run_condition(cond);
-        LOG_INFO("SD2R_DBG denoise step: AFTER first diffusion_model->compute");
 
         sd::Tensor<float> pred;
         if (has_unconditioned) {
@@ -4292,10 +4290,8 @@ static std::optional<ImageGenerationEmbeds> prepare_image_generation_embeds(sd_c
     auto id_cond                     = sd_ctx->sd->get_pmid_conditon(request->pm_params, condition_params);
     int64_t prepare_start_ms         = ggml_time_ms();
     condition_params.zero_out_masked = false;
-    LOG_INFO("SD2R_DBG generate_image: BEFORE get_learned_condition (text encode)");
     auto cond                        = sd_ctx->sd->cond_stage_model->get_learned_condition(sd_ctx->sd->n_threads,
                                                                                            condition_params);
-    LOG_INFO("SD2R_DBG generate_image: AFTER get_learned_condition (text encode OK)");
     if (cond.c_concat.empty()) {
         cond.c_concat = latents->concat_latent;  // TODO: optimize
     }
