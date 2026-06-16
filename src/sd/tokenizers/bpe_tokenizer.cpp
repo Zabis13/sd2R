@@ -134,7 +134,9 @@ std::vector<int> BPETokenizer::encode(const std::string& text, on_new_token_cb_t
     std::vector<int32_t> bpe_tokens;
     std::vector<std::string> token_strs;
 
+    LOG_INFO("SD2R_DBG BPE::encode: ENTER, BEFORE split_with_special_tokens");
     auto splited_texts = split_with_special_tokens(text, special_tokens);
+    LOG_INFO("SD2R_DBG BPE::encode: AFTER split_with_special_tokens (n=%zu)", splited_texts.size());
 
     for (auto& splited_text : splited_texts) {
         if (is_special_token(splited_text)) {
@@ -149,7 +151,9 @@ std::vector<int> BPETokenizer::encode(const std::string& text, on_new_token_cb_t
             token_strs.push_back(splited_text);
             continue;
         }
+        LOG_INFO("SD2R_DBG BPE::encode: BEFORE token_split");
         auto tokens = token_split(splited_text);
+        LOG_INFO("SD2R_DBG BPE::encode: AFTER token_split (n=%zu)", tokens.size());
         for (auto& token : tokens) {
             if (on_new_token_cb != nullptr) {
                 bool skip = on_new_token_cb(token, bpe_tokens);
@@ -169,7 +173,9 @@ std::vector<int> BPETokenizer::encode(const std::string& text, on_new_token_cb_t
             } else {
                 utf32_token = utf8_to_utf32(token_str);
             }
+            LOG_INFO("SD2R_DBG BPE::encode: BEFORE bpe() len=%zu", utf32_token.size());
             auto bpe_strs = bpe(utf32_token);
+            LOG_INFO("SD2R_DBG BPE::encode: AFTER bpe() (n=%zu)", bpe_strs.size());
             for (auto bpe_str : bpe_strs) {
                 int token_id;
                 auto iter = encoder.find(bpe_str);
