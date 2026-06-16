@@ -1869,8 +1869,10 @@ protected:
     }
 
     ggml_cgraph* get_compute_graph(get_graph_cb_t get_graph) {
+        LOG_INFO("SD2R_DBG get_compute_graph(%s): BEFORE get_graph() callback", get_desc().c_str());
         prepare_build_in_tensor_before();
         ggml_cgraph* gf = get_graph();
+        LOG_INFO("SD2R_DBG get_compute_graph(%s): AFTER get_graph() callback", get_desc().c_str());
         if (ggml_graph_n_nodes(gf) > 0) {
             auto result = ggml_graph_node(gf, -1);
             ggml_set_name(result, final_result_name.c_str());
@@ -1893,7 +1895,9 @@ protected:
                                ggml_cgraph** gf_out) {
         GGML_ASSERT(gf_out != nullptr);
 
+        LOG_INFO("SD2R_DBG prepare_compute_graph(%s): BEFORE reset_compute_ctx", get_desc().c_str());
         reset_compute_ctx();
+        LOG_INFO("SD2R_DBG prepare_compute_graph(%s): AFTER reset_compute_ctx, BEFORE get_compute_graph", get_desc().c_str());
         ggml_cgraph* gf = get_compute_graph(get_graph);
         if (gf == nullptr) {
             free_compute_ctx();
@@ -3146,11 +3150,13 @@ public:
                                          int n_threads,
                                          bool free_compute_buffer_immediately,
                                          bool no_return = false) {
+        LOG_INFO("SD2R_DBG compute(%s): ENTER, BEFORE prepare_compute_graph", get_desc().c_str());
         ggml_cgraph* gf = nullptr;
         if (!prepare_compute_graph(get_graph, &gf)) {
             return std::nullopt;
         }
         GGML_ASSERT(gf != nullptr);
+        LOG_INFO("SD2R_DBG compute(%s): AFTER prepare_compute_graph (nodes=%d)", get_desc().c_str(), ggml_graph_n_nodes(gf));
 
         if (can_attempt_graph_cut_segmented_compute()) {
             GraphCutPlan plan;
