@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdio>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -818,7 +819,14 @@ std::vector<std::string> token_split(const std::string& text) {
     auto cps = utf8_to_codepoints(text);
     size_t i = 0;
 
+    fprintf(stderr, "SD2R_DBG token_split: ENTER, n_cps=%zu\n", cps.size()); fflush(stderr);
+    size_t guard = 0;
     while (i < cps.size()) {
+        fprintf(stderr, "SD2R_DBG token_split: iter i=%zu cp=U+%04X\n", i, (unsigned)cps[i]); fflush(stderr);
+        if (++guard > cps.size() + 16) {
+            fprintf(stderr, "SD2R_DBG token_split: GUARD TRIPPED - infinite loop at i=%zu cp=U+%04X\n", i, (unsigned)cps[i]); fflush(stderr);
+            break;
+        }
         char32_t cp = cps[i];
 
         // `(?i:'s|'t|'re|'ve|'m|'ll|'d)`
