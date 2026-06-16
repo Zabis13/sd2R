@@ -621,6 +621,27 @@ bool SDBackendManager::init(const char* backend_spec,
         params_assignment_.set_default("cpu");
     }
 
+    // Report the resolved residency mode. When params live on a different backend
+    // than the runtime, weights are streamed (copied + reverted) on every graph
+    // pass — a large, easily-overlooked performance cost. Surface it explicitly.
+    {
+        const std::string runtime_def = runtime_assignment_.default_name.empty() ? "<default>" : runtime_assignment_.default_name;
+        const std::string params_def  = params_assignment_.default_name.empty()  ? "<runtime>" : params_assignment_.default_name;
+        const bool params_differ = !params_assignment_.empty();
+        LOG_INFO("backend residency: runtime='%s' params='%s' offload_params_to_cpu=%d keep_clip_on_cpu=%d -> %s",
+                 runtime_def.c_str(),
+                 params_def.c_str(),
+                 (int)offload_params_to_cpu,
+                 (int)keep_clip_on_cpu,
+                 params_differ
+                     ? "PARAMS STREAMED (params backend != runtime: weights re-uploaded to GPU every graph pass)"
+                     : "params resident on runtime backend (no streaming)");
+        for (const auto& kv : params_assignment_.module_names) {
+            LOG_INFO("backend residency: module '%s' params pinned to '%s' (streamed)",
+                     sd_backend_module_name(kv.first), kv.second.c_str());
+        }
+    }
+
     return validate(error);
 }
 

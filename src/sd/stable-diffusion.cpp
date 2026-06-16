@@ -275,6 +275,38 @@ public:
             stream_layers = false;
         }
 
+        // Log every behavioural parameter coming from R that changes the
+        // runtime regime (residency, attention, conv path, geometry, devices).
+        // These were previously silent and could only be inferred from side
+        // effects (e.g. repeated weight uploads). Surface them at init time.
+        LOG_INFO("sd_ctx params: backend='%s' params_backend='%s' offload_params_to_cpu=%d "
+                 "keep_clip_on_cpu=%d keep_vae_on_cpu=%d keep_control_net_on_cpu=%d "
+                 "max_vram=%.2f stream_layers=%d enable_mmap=%d free_params_immediately=%d",
+                 backend_spec.empty() ? "<default>" : backend_spec.c_str(),
+                 params_backend_spec.empty() ? "<default>" : params_backend_spec.c_str(),
+                 (int)offload_params_to_cpu,
+                 (int)sd_ctx_params->keep_clip_on_cpu,
+                 (int)sd_ctx_params->keep_vae_on_cpu,
+                 (int)sd_ctx_params->keep_control_net_on_cpu,
+                 (double)max_vram,
+                 (int)stream_layers,
+                 (int)sd_ctx_params->enable_mmap,
+                 (int)free_params_immediately);
+        LOG_INFO("sd_ctx params: flash_attn=%d diffusion_flash_attn=%d diffusion_conv_direct=%d "
+                 "vae_conv_direct=%d circular_x=%d circular_y=%d vae_decode_only=%d n_threads=%d",
+                 (int)sd_ctx_params->flash_attn,
+                 (int)sd_ctx_params->diffusion_flash_attn,
+                 (int)sd_ctx_params->diffusion_conv_direct,
+                 (int)sd_ctx_params->vae_conv_direct,
+                 (int)sd_ctx_params->circular_x,
+                 (int)sd_ctx_params->circular_y,
+                 (int)vae_decode_only,
+                 n_threads);
+        LOG_INFO("sd_ctx params: gpu_devices diffusion=%d clip=%d vae=%d",
+                 sd_ctx_params->diffusion_gpu_device,
+                 sd_ctx_params->clip_gpu_device,
+                 sd_ctx_params->vae_gpu_device);
+
         bool use_tae       = false;
         bool use_audio_vae = false;
 

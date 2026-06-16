@@ -1715,6 +1715,13 @@ protected:
     size_t max_graph_vram_bytes = 0;
     bool stream_layers_enabled  = false;
 
+    // Industrial telemetry: how much weight data this runner has streamed to the
+    // runtime backend (params_backend != runtime_backend regime). Lets a single
+    // log line expose the cost that was previously only visible as a flood of
+    // low-level vk_set_tensor calls.
+    uint64_t offload_copy_count = 0;
+    uint64_t offload_copy_bytes = 0;
+
     sd::layer_registry::LayerRegistry layer_registry_;
 
     std::shared_ptr<WeightAdapter> weight_adapter = nullptr;
@@ -2116,6 +2123,12 @@ protected:
     }
 
     bool offload_all_params() {
+        LOG_INFO("SD2R_DBG offload_all_params(%s): params_backend==runtime_backend? %d, params_on_runtime_backend=%d, params_backend=%s, runtime_backend=%s",
+                 get_desc().c_str(),
+                 (int)(params_backend == runtime_backend),
+                 (int)params_on_runtime_backend,
+                 params_backend ? ggml_backend_name(params_backend) : "<null>",
+                 runtime_backend ? ggml_backend_name(runtime_backend) : "<null>");
         restore_partial_params();
         if (params_backend == runtime_backend) {
             return true;
@@ -2123,6 +2136,7 @@ protected:
         if (params_on_runtime_backend) {
             return true;
         }
+        LOG_INFO("SD2R_DBG offload_all_params(%s): TAKING FULL OFFLOAD PATH (re-copying all weights to GPU)", get_desc().c_str());
         GGML_ASSERT(runtime_params_buffer == nullptr);
         int64_t t0         = ggml_time_ms();
         size_t num_tensors = ggml_tensor_num(offload_ctx);
@@ -2150,6 +2164,8 @@ protected:
 
         while (t != nullptr && offload_t != nullptr) {
             ggml_backend_tensor_copy(t, offload_t);
+            offload_copy_count++;
+            offload_copy_bytes += ggml_nbytes(t);
             std::swap(t->buffer, offload_t->buffer);
             std::swap(t->data, offload_t->data);
             std::swap(t->extra, offload_t->extra);
@@ -2238,6 +2254,8 @@ protected:
             ggml_tensor* offload_tensor = pair.second;
 
             ggml_backend_tensor_copy(tensor, offload_tensor);
+            offload_copy_count++;
+            offload_copy_bytes += ggml_nbytes(tensor);
             std::swap(tensor->buffer, offload_tensor->buffer);
             std::swap(tensor->data, offload_tensor->data);
             std::swap(tensor->extra, offload_tensor->extra);
@@ -2753,6 +2771,16 @@ protected:
                       t_compute_end - t_compute_begin,
                       t_cache_end - t_cache_begin,
                       ggml_time_ms() - t_execute_begin);
+        }
+        // Industrial telemetry: surface cumulative weight streaming for this
+        // runner. When params are not resident on the runtime backend this grows
+        // by ~the encoder weight size on every pass — the cost that masqueraded
+        // as a "hang". A zero counter means weights are resident (the fast path).
+        if (offload_copy_bytes > 0) {
+            LOG_INFO("%s weight streaming so far: %llu copies, %.2f MB total (params_backend != runtime_backend -> uploaded on every pass)",
+                     get_desc().c_str(),
+                     (unsigned long long)offload_copy_count,
+                     offload_copy_bytes / (1024.0 * 1024.0));
         }
         return output;
     }
