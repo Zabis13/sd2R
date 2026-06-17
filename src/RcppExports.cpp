@@ -149,13 +149,13 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// sd_destroy_context
-void sd_destroy_context(SEXP ctx_sexp);
-RcppExport SEXP _sd2R_sd_destroy_context(SEXP ctx_sexpSEXP) {
+// sd_destroy_context_impl
+void sd_destroy_context_impl(SEXP ctx_sexp);
+RcppExport SEXP _sd2R_sd_destroy_context_impl(SEXP ctx_sexpSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
-    sd_destroy_context(ctx_sexp);
+    sd_destroy_context_impl(ctx_sexp);
     return R_NilValue;
 END_RCPP
 }
@@ -521,7 +521,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_sd2R_sd_profile_get", (DL_FUNC) &_sd2R_sd_profile_get, 0},
     {"_sd2R_sd_init_log", (DL_FUNC) &_sd2R_sd_init_log, 0},
     {"_sd2R_sd_create_context", (DL_FUNC) &_sd2R_sd_create_context, 1},
-    {"_sd2R_sd_destroy_context", (DL_FUNC) &_sd2R_sd_destroy_context, 1},
+    {"_sd2R_sd_destroy_context_impl", (DL_FUNC) &_sd2R_sd_destroy_context_impl, 1},
     {"_sd2R_sd_create_context_async", (DL_FUNC) &_sd2R_sd_create_context_async, 1},
     {"_sd2R_sd_create_context_poll", (DL_FUNC) &_sd2R_sd_create_context_poll, 0},
     {"_sd2R_sd_create_context_result", (DL_FUNC) &_sd2R_sd_create_context_result, 0},

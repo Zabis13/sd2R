@@ -176,11 +176,11 @@ RTX 3090 system: CPU Xeon E5-2666 v3, 32 GB RAM (Windows).
 
 | Test | AMD RX 9070 (16 GB) | RTX 3090 (24 GB) |
 |---|---|---|
-| 1. 768x768 direct | 13.58 s | 5.58 s |
-| 2. 1024x1024 tiled VAE | 32.51 s | 8.81 s |
-| 3. 2048x1024 highres fix | 45.01 s | 24.03 s |
-| 4. img2img 768x768 direct | 8.08 s | 4.42 s |
-| 5. 1024x1024 direct | 33.31 s | 8.77 s |
+| 1. 768x768 direct | 13.58 s | 5.10 s |
+| 2. 1024x1024 tiled VAE | 32.51 s | 8.59 s |
+| 3. 2048x1024 highres fix | 45.01 s | 23.54 s |
+| 4. img2img 768x768 direct | 8.08 s | 4.34 s |
+| 5. 1024x1024 direct | 33.31 s | 8.74 s |
 
 ### Model size comparison
 

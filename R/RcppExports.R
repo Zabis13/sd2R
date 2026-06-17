@@ -57,8 +57,8 @@ sd_create_context <- function(params) {
     .Call(`_sd2R_sd_create_context`, params)
 }
 
-sd_destroy_context <- function(ctx_sexp) {
-    invisible(.Call(`_sd2R_sd_destroy_context`, ctx_sexp))
+sd_destroy_context_impl <- function(ctx_sexp) {
+    invisible(.Call(`_sd2R_sd_destroy_context_impl`, ctx_sexp))
 }
 
 sd_create_context_async <- function(params) {

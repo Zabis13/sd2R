@@ -249,6 +249,37 @@ sd_ctx <- function(model_path = NULL,
   ctx
 }
 
+#' Release a stable diffusion context and free its VRAM
+#'
+#' Immediately destroys an \code{sd_ctx} object created by \code{\link{sd_ctx}},
+#' freeing the GPU memory held by its model weights and compute buffers. Use this
+#' before loading a different model so the two models do not pile up in VRAM.
+#'
+#' The context's external pointer also has a finalizer that frees it during R's
+#' garbage collection, but that is non-deterministic and may not run promptly —
+#' on a memory-constrained GPU, loading a second model before the first is
+#' collected can exhaust VRAM and make the next Vulkan device init fail. Calling
+#' \code{sd_destroy_context()} makes the release deterministic.
+#'
+#' After this call the \code{ctx} object is dead; do not pass it to
+#' \code{\link{sd_generate}} or other functions. Calling it twice on the same
+#' object, or on an already-finalized one, is a safe no-op.
+#'
+#' @param ctx An \code{sd_ctx} object from \code{\link{sd_ctx}}.
+#' @return \code{NULL}, invisibly.
+#' @seealso \code{\link{sd_ctx}}
+#' @export
+#' @examples
+#' \dontrun{
+#' ctx <- sd_ctx("flux1.safetensors", model_type = "flux")
+#' img <- sd_generate(ctx, "a cat")
+#' sd_destroy_context(ctx)              # free VRAM before the next model
+#' ctx <- sd_ctx("flux2.safetensors", model_type = "flux2")
+#' }
+sd_destroy_context <- function(ctx) {
+  invisible(.Call(`_sd2R_sd_destroy_context_impl`, ctx))
+}
+
 #' Generate images (unified entry point)
 #'
 #' Automatically selects the best generation strategy based on output resolution

@@ -659,6 +659,20 @@ server <- function(input, output, session) {
     local_state$model_type <- input$model_type
     rv$status_msg <- "Loading model..."
 
+    # Free the previously loaded context BEFORE creating the new one. Without
+    # this, loading a second model keeps the first in VRAM (the XPtr finalizer
+    # is non-deterministic and may not run for a long time), so two ~11 GB
+    # models pile up — on a 24 GB card the GPU ends up nearly full and the next
+    # Vulkan createDevice (load or even the GPU-caps probe) throws
+    # vk::InitializationFailed and terminates the app. Releasing first means the
+    # VRAM peak is one model, not two.
+    if (!is.null(local_state$ctx)) {
+      tryCatch(sd2R::sd_destroy_context(local_state$ctx),
+               error = function(e) NULL)
+      local_state$ctx <- NULL
+      gc()
+    }
+
     # Build params for C++ sd_create_context_async
     ctx_params <- list(
       vae_decode_only = TRUE,
@@ -1137,12 +1151,35 @@ server <- function(input, output, session) {
       }
       for (i in seq_len(n)) {
         idx  <- i - 1L
-        desc <- ggmlR::ggml_vulkan_device_description(idx)
-        mem  <- ggmlR::ggml_vulkan_device_memory(idx)
-        caps <- ggmlR::ggml_vulkan_device_caps(idx)
+        desc <- tryCatch(ggmlR::ggml_vulkan_device_description(idx),
+                         error = function(e) sprintf("<device %d>", idx))
+        mem  <- tryCatch(ggmlR::ggml_vulkan_device_memory(idx),
+                         error = function(e) NULL)
+        # ggml_vulkan_device_caps() spins up a temporary Vulkan logical device
+        # (createDevice). On a near-full GPU that throws vk::InitializationFailed
+        # error — which, uncaught, terminates the whole R/Shiny process. Catch it
+        # so the diagnostic (whose job is to *help*) never kills the app, and
+        # report low VRAM as the likely cause.
+        caps <- tryCatch(ggmlR::ggml_vulkan_device_caps(idx),
+                         error = function(e) NULL)
         cat(sprintf("Device [%d]: %s\n", idx, desc))
-        cat(sprintf("  Memory : %.2f GB free / %.2f GB total\n",
-                    mem$free / 1e9, mem$total / 1e9))
+        if (!is.null(mem)) {
+          cat(sprintf("  Memory : %.2f GB free / %.2f GB total\n",
+                      mem$free / 1e9, mem$total / 1e9))
+        } else {
+          cat("  Memory : <unavailable>\n")
+        }
+        if (is.null(caps)) {
+          cat("\n  --- Capabilities ---\n")
+          cat("  could not query device caps (createDevice failed).\n")
+          if (!is.null(mem) && mem$free < 2e9) {
+            cat(sprintf("  Likely cause: only %.2f GB VRAM free — release loaded\n",
+                        mem$free / 1e9))
+            cat("  models (rm(ctx); gc()) and retry.\n")
+          }
+          cat("\n")
+          next
+        }
         cat("\n  --- Capabilities ---\n")
         cat(sprintf("  arch               : %s\n", caps$arch))
         cat(sprintf("  fp16               : %s   (fast inference)\n",

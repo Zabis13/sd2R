@@ -516,7 +516,7 @@ SEXP sd_create_context(Rcpp::List params) {
 }
 
 // [[Rcpp::export]]
-void sd_destroy_context(SEXP ctx_sexp) {
+void sd_destroy_context_impl(SEXP ctx_sexp) {
     SdCtxXPtr xptr(ctx_sexp);
     if (xptr.get()) {
         free_sd_ctx(xptr.get());
