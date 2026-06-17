@@ -736,10 +736,15 @@ void ModelLoader::set_wtype_override(ggml_type wtype, std::string tensor_type_ru
     for (auto& [name, tensor_storage] : tensor_storage_map) {
         ggml_type dst_type = wtype;
         for (const auto& tensor_type_rule : map_rules) {
-            std::regex pattern(tensor_type_rule.first);
-            if (std::regex_search(name, pattern)) {
-                dst_type = tensor_type_rule.second;
-                break;
+            try {
+                std::regex pattern(tensor_type_rule.first);
+                if (std::regex_search(name, pattern)) {
+                    dst_type = tensor_type_rule.second;
+                    break;
+                }
+            } catch (const std::regex_error& e) {
+                LOG_WARN("invalid tensor_type_rule regex \"%s\": %s — rule ignored",
+                         tensor_type_rule.first.c_str(), e.what());
             }
         }
         if (dst_type == GGML_TYPE_COUNT) {

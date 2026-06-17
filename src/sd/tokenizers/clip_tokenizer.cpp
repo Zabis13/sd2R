@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <regex>
 #include <set>
 
 #include "ggml.h"
@@ -89,10 +88,29 @@ static std::string strip(const std::string& str) {
     return str.substr(start, end - start + 1);
 }
 
+// Collapse any run of whitespace into a single space, then strip ends.
+// Hand-rolled to avoid libstdc++'s std::regex, which on MinGW/Windows hangs
+// (catastrophic backtracking / deep recursion) — same class of bug already
+// fixed in parse_prompt_attention. Matches std::regex R"(\s+)" with the C
+// locale: space, \t, \n, \r, \v, \f.
 static std::string whitespace_clean(const std::string& text) {
-    auto result = std::regex_replace(text, std::regex(R"(\s+)"), " ");
-    result      = strip(result);
-    return result;
+    std::string collapsed;
+    collapsed.reserve(text.size());
+    bool in_ws = false;
+    for (char c : text) {
+        bool is_ws = (c == ' ' || c == '\t' || c == '\n' ||
+                      c == '\r' || c == '\v' || c == '\f');
+        if (is_ws) {
+            if (!in_ws) {
+                collapsed.push_back(' ');
+                in_ws = true;
+            }
+        } else {
+            collapsed.push_back(c);
+            in_ws = false;
+        }
+    }
+    return strip(collapsed);
 }
 
 std::string CLIPTokenizer::normalize(const std::string& text) const {
@@ -101,15 +119,97 @@ std::string CLIPTokenizer::normalize(const std::string& text) const {
     return normalized_text;
 }
 
+// Hand-rolled equivalent of the CLIP BPE split pattern:
+//   's|'t|'re|'ve|'m|'ll|'d|[[:alpha:]]+|[[:digit:]]|[^[:space:][:alpha:][:digit:]]+
+// libstdc++'s std::regex hangs on this alternation-with-quantifiers pattern on
+// MinGW/Windows (catastrophic backtracking), so we tokenize manually. Matching
+// rules, in priority order, mirror the regex exactly:
+//   1. English contractions: 's 't 're 've 'm 'll 'd  (only at an apostrophe)
+//   2. run of ASCII letters   [[:alpha:]]+
+//   3. a single ASCII digit   [[:digit:]]   (one char per token, as in regex)
+//   4. run of "other" bytes   [^space,alpha,digit]+ (punctuation + UTF-8 cont.)
+// icase is irrelevant: normalize() has already lowercased the input. Note we
+// operate on bytes; non-ASCII (high-bit) bytes are neither alpha nor digit
+// under the C locale, so they fall into rule 4 exactly as std::regex did with
+// the default (C) locale.
 std::vector<std::string> CLIPTokenizer::token_split(const std::string& text) const {
-    std::regex clip_pat(R"('s|'t|'re|'ve|'m|'ll|'d|[[:alpha:]]+|[[:digit:]]|[^[:space:][:alpha:][:digit:]]+)",
-                        std::regex::icase);
-    std::sregex_iterator iter(text.begin(), text.end(), clip_pat);
-    std::sregex_iterator end;
+    auto is_alpha = [](unsigned char c) { return std::isalpha(c) != 0; };
+    auto is_digit = [](unsigned char c) { return std::isdigit(c) != 0; };
+    auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
 
     std::vector<std::string> result;
-    for (; iter != end; ++iter) {
-        result.emplace_back(iter->str());
+    const size_t n = text.size();
+    size_t i       = 0;
+
+    while (i < n) {
+        unsigned char c = static_cast<unsigned char>(text[i]);
+
+        // Rule 1: contractions at an apostrophe. Inspect the next byte(s)
+        // explicitly (no startswith) so multi-byte UTF-8 before the apostrophe
+        // can never be misread.
+        if (c == '\'' && i + 1 < n) {
+            unsigned char c1 = static_cast<unsigned char>(text[i + 1]);
+            // two-letter: 're 've 'll  (check before single-letter forms)
+            if (i + 2 < n) {
+                unsigned char c2 = static_cast<unsigned char>(text[i + 2]);
+                if ((c1 == 'r' && c2 == 'e') ||
+                    (c1 == 'v' && c2 == 'e') ||
+                    (c1 == 'l' && c2 == 'l')) {
+                    result.emplace_back(text.substr(i, 3));
+                    i += 3;
+                    continue;
+                }
+            }
+            // single-letter: 's 't 'm 'd
+            if (c1 == 's' || c1 == 't' || c1 == 'm' || c1 == 'd') {
+                result.emplace_back(text.substr(i, 2));
+                i += 2;
+                continue;
+            }
+            // bare apostrophe falls through to rule 4 (other run).
+        }
+
+        // Rule 2: run of letters.
+        if (is_alpha(c)) {
+            size_t j = i + 1;
+            while (j < n && is_alpha(static_cast<unsigned char>(text[j]))) {
+                j++;
+            }
+            result.emplace_back(text.substr(i, j - i));
+            i = j;
+            continue;
+        }
+
+        // Rule 3: a single digit.
+        if (is_digit(c)) {
+            result.emplace_back(text.substr(i, 1));
+            i += 1;
+            continue;
+        }
+
+        // Whitespace is a separator: the regex never emits whitespace tokens.
+        if (is_space(c)) {
+            i += 1;
+            continue;
+        }
+
+        // Rule 4: run of "other" bytes (punctuation, symbols, UTF-8
+        // continuation bytes) — anything that is not space/alpha/digit and not
+        // the start of a contraction handled above.
+        size_t j = i + 1;
+        while (j < n) {
+            unsigned char cj = static_cast<unsigned char>(text[j]);
+            if (is_space(cj) || is_alpha(cj) || is_digit(cj)) {
+                break;
+            }
+            // stop so a new contraction can be matched at the apostrophe
+            if (cj == '\'') {
+                break;
+            }
+            j++;
+        }
+        result.emplace_back(text.substr(i, j - i));
+        i = j;
     }
 
     return result;

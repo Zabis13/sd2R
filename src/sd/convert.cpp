@@ -19,10 +19,15 @@ static ggml_type get_export_tensor_type(ModelLoader& model_loader,
     ggml_type dst_type      = type;
 
     for (const auto& tensor_type_rule : tensor_type_rules) {
-        std::regex pattern(tensor_type_rule.first);
-        if (std::regex_search(name, pattern)) {
-            dst_type = tensor_type_rule.second;
-            break;
+        try {
+            std::regex pattern(tensor_type_rule.first);
+            if (std::regex_search(name, pattern)) {
+                dst_type = tensor_type_rule.second;
+                break;
+            }
+        } catch (const std::regex_error& e) {
+            LOG_WARN("invalid tensor_type_rule regex \"%s\": %s — rule ignored",
+                     tensor_type_rule.first.c_str(), e.what());
         }
     }
 

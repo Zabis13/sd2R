@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
-#include <regex>
 #include <sstream>
 
 #include "json.hpp"
@@ -283,7 +282,22 @@ std::string T5UniGramTokenizer::decode_token(int token_id) const {
 std::string T5UniGramTokenizer::normalize(const std::string& input) const {
     // Ref: https://github.com/huggingface/tokenizers/blob/1ff56c0c70b045f0cd82da1af9ac08cd4c7a6f9f/bindings/python/py_src/tokenizers/implementations/sentencepiece_unigram.py#L29
     // TODO: nmt-nfkc
-    std::string normalized = std::regex_replace(input, std::regex(" {2,}"), " ");
+    // Collapse runs of 2+ ASCII spaces into one. Hand-rolled instead of
+    // std::regex(" {2,}") — libstdc++'s std::regex hangs on MinGW/Windows.
+    std::string normalized;
+    normalized.reserve(input.size());
+    bool prev_space = false;
+    for (char c : input) {
+        if (c == ' ') {
+            if (!prev_space) {
+                normalized.push_back(' ');
+            }
+            prev_space = true;
+        } else {
+            normalized.push_back(c);
+            prev_space = false;
+        }
+    }
     return normalized;
 }
 

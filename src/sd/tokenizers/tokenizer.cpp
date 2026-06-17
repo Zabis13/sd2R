@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <regex>
 
 #include "util.h"
 
@@ -196,8 +195,19 @@ void Tokenizer::pad_tokens(std::vector<int>& tokens,
 }
 
 static std::string clean_up_tokenization(std::string& text) {
-    std::regex pattern(R"( ,)");
-    return std::regex_replace(text, pattern, ",");
+    // Replace every " ," with ",". Hand-rolled instead of std::regex(" ,") —
+    // libstdc++'s std::regex hangs on MinGW/Windows.
+    std::string result;
+    result.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == ' ' && i + 1 < text.size() && text[i + 1] == ',') {
+            result.push_back(',');
+            ++i;  // skip the comma, already emitted
+        } else {
+            result.push_back(text[i]);
+        }
+    }
+    return result;
 }
 
 std::string Tokenizer::decode(const std::vector<int>& tokens) const {
