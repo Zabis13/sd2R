@@ -517,10 +517,20 @@ SEXP sd_create_context(Rcpp::List params) {
 
 // [[Rcpp::export]]
 void sd_destroy_context_impl(SEXP ctx_sexp) {
-    SdCtxXPtr xptr(ctx_sexp);
-    if (xptr.get()) {
-        free_sd_ctx(xptr.get());
-        xptr.release();
+    // Free the context explicitly and clear the external pointer IN the SEXP so
+    // the XPtr finalizer (sd_ctx_invoke_free -> free_sd_ctx) cannot run a second
+    // time during GC. XPtr::release() only nulls the temporary wrapper, not the
+    // underlying SEXP, which left the finalizer armed and caused a double free
+    // (segfault) when the same ctx was later garbage-collected — e.g. on the
+    // second "Load Model" in the Shiny app. R_ClearExternalPtr zeroes the
+    // address in the SEXP itself, so the finalizer sees NULL and is a no-op.
+    if (TYPEOF(ctx_sexp) != EXTPTRSXP) {
+        return;
+    }
+    sd_ctx_t* ctx = reinterpret_cast<sd_ctx_t*>(R_ExternalPtrAddr(ctx_sexp));
+    if (ctx) {
+        free_sd_ctx(ctx);
+        R_ClearExternalPtr(ctx_sexp);
     }
 }
 
