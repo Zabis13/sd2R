@@ -37,6 +37,33 @@
 #include "tensor_ggml.hpp"
 #include "util.h"
 
+// --- TEMP diagnostic: crash-survivable file logger (mirror of ggmlR's
+// r_dbg_filelog.h, which is not reachable from sd2R). Writes one line per call
+// via fopen("a")/fwrite/fclose so it survives an abort and lands in the SAME
+// file as ggmlR's vk_set_tensor / vk_graph_compute markers. Enabled by the
+// GGMLR_DBG_LOG env var; cheap no-op when unset. Remove once the FLUX
+// pre-compute stall is localized. ----------------------------------------
+#include <cstdio>
+#include <cstdarg>
+static inline void sd2r_dbg_logf(const char* fmt, ...) {
+    const char* path = std::getenv("GGMLR_DBG_LOG");
+    if (path == nullptr || path[0] == '\0') {
+        return;
+    }
+    FILE* f = std::fopen(path, "a");
+    if (f == nullptr) {
+        return;
+    }
+    char buf[512];
+    va_list ap;
+    va_start(ap, fmt);
+    std::vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    std::fwrite(buf, 1, std::strlen(buf), f);
+    std::fwrite("\n", 1, 1, f);
+    std::fclose(f);
+}
+
 #define EPS 1e-05f
 
 #ifndef __STATIC_INLINE__
@@ -3162,10 +3189,47 @@ public:
                                          bool free_compute_buffer_immediately,
                                          bool no_return = false) {
         ggml_cgraph* gf = nullptr;
+        sd2r_dbg_logf("compute[%s]: BEFORE build_graph", get_desc().c_str());
         if (!prepare_compute_graph(get_graph, &gf)) {
             return std::nullopt;
         }
         GGML_ASSERT(gf != nullptr);
+        sd2r_dbg_logf("compute[%s]: AFTER build_graph n_nodes=%d n_leafs=%d graph_capacity=%d graph_overhead=%.2f MB",
+                      get_desc().c_str(),
+                      ggml_graph_n_nodes(gf),
+                      sd::ggml_graph_cut::leaf_count(gf),
+                      ggml_graph_size(gf),
+                      ggml_graph_overhead_custom((size_t)ggml_graph_size(gf), false) / (1024.0 * 1024.0));
+
+        // TEMP: per-node dump. Heavy (thousands of lines), so gated by its own
+        // env var AND emitted only once per process to avoid repeating the full
+        // graph on every Euler step. Set GGMLR_DBG_NODES=1 to enable.
+        {
+            static bool s_nodes_dumped = false;
+            if (!s_nodes_dumped) {
+                const char* want = std::getenv("GGMLR_DBG_NODES");
+                if (want != nullptr && want[0] != '\0' && want[0] != '0') {
+                    s_nodes_dumped = true;
+                    const int n = ggml_graph_n_nodes(gf);
+                    sd2r_dbg_logf("compute[%s]: NODE DUMP begin (%d nodes)", get_desc().c_str(), n);
+                    for (int i = 0; i < n; ++i) {
+                        ggml_tensor* node = ggml_graph_node(gf, i);
+                        const char* nm    = ggml_get_name(node);
+                        const char* s0    = (node->src[0] != nullptr) ? ggml_op_name(node->src[0]->op) : "-";
+                        const char* s1    = (node->src[1] != nullptr) ? ggml_op_name(node->src[1]->op) : "-";
+                        sd2r_dbg_logf("node[%d] op=%s name='%s' type=%s ne=[%lld,%lld,%lld,%lld] src0_op=%s src1_op=%s",
+                                      i,
+                                      ggml_op_name(node->op),
+                                      (nm != nullptr && nm[0] != '\0') ? nm : "<unnamed>",
+                                      ggml_type_name(node->type),
+                                      (long long)node->ne[0], (long long)node->ne[1],
+                                      (long long)node->ne[2], (long long)node->ne[3],
+                                      s0, s1);
+                    }
+                    sd2r_dbg_logf("compute[%s]: NODE DUMP end", get_desc().c_str());
+                }
+            }
+        }
 
         if (can_attempt_graph_cut_segmented_compute()) {
             GraphCutPlan plan;
@@ -3190,10 +3254,14 @@ public:
                                                   no_return);
             }
         }
+        sd2r_dbg_logf("compute[%s]: BEFORE gallocr_reserve", get_desc().c_str());
         if (!alloc_compute_buffer(gf)) {
             LOG_ERROR("%s alloc compute buffer failed", get_desc().c_str());
             return std::nullopt;
         }
+        sd2r_dbg_logf("compute[%s]: AFTER gallocr_reserve -> execute_graph (compute_buffer=%.2f MB)",
+                      get_desc().c_str(),
+                      (compute_allocr != nullptr ? ggml_gallocr_get_buffer_size(compute_allocr, 0) : 0) / (1024.0 * 1024.0));
         return execute_graph<T>(gf,
                                 n_threads,
                                 free_compute_buffer_immediately,

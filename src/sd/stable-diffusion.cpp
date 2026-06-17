@@ -4290,8 +4290,10 @@ static std::optional<ImageGenerationEmbeds> prepare_image_generation_embeds(sd_c
     auto id_cond                     = sd_ctx->sd->get_pmid_conditon(request->pm_params, condition_params);
     int64_t prepare_start_ms         = ggml_time_ms();
     condition_params.zero_out_masked = false;
+    LOG_INFO("PHASE: text-encode (get_learned_condition) BEGIN");
     auto cond                        = sd_ctx->sd->cond_stage_model->get_learned_condition(sd_ctx->sd->n_threads,
                                                                                            condition_params);
+    LOG_INFO("PHASE: text-encode END (%.2fs)", (ggml_time_ms() - prepare_start_ms) / 1000.0);
     if (cond.c_concat.empty()) {
         cond.c_concat = latents->concat_latent;  // TODO: optimize
     }
