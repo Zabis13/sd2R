@@ -1323,6 +1323,8 @@ struct FluxCLIPEmbedder : public Conditioner {
         sd::Tensor<float> pooled;         // [768,]
 
         size_t chunk_count = std::max(clip_l_tokens.size() > 0 ? chunk_len : 0, t5_tokens.size()) / chunk_len;
+        sd2r_dbg_logf("FluxCLIPEmbedder: ENTER common chunk_count=%zu clip_l_tokens=%zu t5_tokens=%zu clip_l=%p t5=%p",
+                      chunk_count, clip_l_tokens.size(), t5_tokens.size(), (void*)clip_l.get(), (void*)t5.get());
         for (int chunk_idx = 0; chunk_idx < chunk_count; chunk_idx++) {
             // clip_l
             if (chunk_idx == 0) {
@@ -1339,6 +1341,7 @@ struct FluxCLIPEmbedder : public Conditioner {
                     auto it       = std::find(chunk_tokens.begin(), chunk_tokens.end(), clip_l_tokenizer.EOS_TOKEN_ID);
                     max_token_idx = std::min<size_t>(std::distance(chunk_tokens.begin(), it), chunk_tokens.size() - 1);
 
+                    sd2r_dbg_logf("FluxCLIPEmbedder: BEFORE clip_l->compute max_token_idx=%zu", max_token_idx);
                     pooled = clip_l->compute(n_threads,
                                              input_ids,
                                              0,
@@ -1346,6 +1349,7 @@ struct FluxCLIPEmbedder : public Conditioner {
                                              max_token_idx,
                                              true,
                                              clip_skip);
+                    sd2r_dbg_logf("FluxCLIPEmbedder: AFTER clip_l->compute pooled_empty=%d", (int)pooled.empty());
                     GGML_ASSERT(!pooled.empty());
                 } else {
                     pooled = sd::Tensor<float>::zeros({768});
@@ -1361,9 +1365,11 @@ struct FluxCLIPEmbedder : public Conditioner {
                                                  t5_weights.begin() + (chunk_idx + 1) * chunk_len);
 
                 sd::Tensor<int32_t> input_ids({static_cast<int64_t>(chunk_tokens.size())}, chunk_tokens);
+                sd2r_dbg_logf("FluxCLIPEmbedder: BEFORE t5->compute chunk_idx=%d n_tokens=%zu", chunk_idx, chunk_tokens.size());
                 chunk_hidden_states = t5->compute(n_threads,
                                                   input_ids,
                                                   sd::Tensor<float>());
+                sd2r_dbg_logf("FluxCLIPEmbedder: AFTER t5->compute chunk_idx=%d empty=%d", chunk_idx, (int)chunk_hidden_states.empty());
                 GGML_ASSERT(!chunk_hidden_states.empty());
                 chunk_hidden_states = ::apply_token_weights(std::move(chunk_hidden_states), chunk_weights);
                 if (zero_out_masked) {
@@ -1390,11 +1396,15 @@ struct FluxCLIPEmbedder : public Conditioner {
 
     SDCondition get_learned_condition(int n_threads,
                                       const ConditionerParams& conditioner_params) override {
+        sd2r_dbg_logf("FluxCLIPEmbedder: ENTER get_learned_condition text_len=%zu", conditioner_params.text.size());
         auto tokens_and_weights = tokenize(conditioner_params.text, chunk_len, chunk_len);
-        return get_learned_condition_common(n_threads,
-                                            tokens_and_weights,
-                                            conditioner_params.clip_skip,
-                                            conditioner_params.zero_out_masked);
+        sd2r_dbg_logf("FluxCLIPEmbedder: AFTER tokenize");
+        auto result = get_learned_condition_common(n_threads,
+                                                   tokens_and_weights,
+                                                   conditioner_params.clip_skip,
+                                                   conditioner_params.zero_out_masked);
+        sd2r_dbg_logf("FluxCLIPEmbedder: AFTER get_learned_condition (returning)");
+        return result;
     }
 };
 
