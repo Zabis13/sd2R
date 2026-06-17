@@ -1250,7 +1250,9 @@ struct FluxCLIPEmbedder : public Conditioner {
     std::vector<std::pair<std::vector<int>, std::vector<float>>> tokenize(std::string text,
                                                                           size_t min_length = 0,
                                                                           size_t max_length = 0) {
+        sd2r_dbg_logf("FluxCLIPEmbedder::tokenize: BEFORE parse_prompt_attention");
         auto parsed_attention = parse_prompt_attention(text);
+        sd2r_dbg_logf("FluxCLIPEmbedder::tokenize: AFTER parse_prompt_attention n_segments=%zu", parsed_attention.size());
 
         {
             std::stringstream ss;
@@ -1270,27 +1272,35 @@ struct FluxCLIPEmbedder : public Conditioner {
         std::vector<float> clip_l_weights;
         std::vector<int> t5_tokens;
         std::vector<float> t5_weights;
+        int seg = 0;
         for (const auto& item : parsed_attention) {
             const std::string& curr_text = item.first;
             float curr_weight            = item.second;
             if (clip_l) {
+                sd2r_dbg_logf("FluxCLIPEmbedder::tokenize: seg=%d BEFORE clip_l.encode len=%zu", seg, curr_text.size());
                 std::vector<int> curr_tokens = clip_l_tokenizer.encode(curr_text, on_new_token_cb);
+                sd2r_dbg_logf("FluxCLIPEmbedder::tokenize: seg=%d AFTER clip_l.encode n=%zu", seg, curr_tokens.size());
                 clip_l_tokens.insert(clip_l_tokens.end(), curr_tokens.begin(), curr_tokens.end());
                 clip_l_weights.insert(clip_l_weights.end(), curr_tokens.size(), curr_weight);
             }
             if (t5) {
+                sd2r_dbg_logf("FluxCLIPEmbedder::tokenize: seg=%d BEFORE t5.encode len=%zu", seg, curr_text.size());
                 std::vector<int> curr_tokens = t5_tokenizer.encode(curr_text);
+                sd2r_dbg_logf("FluxCLIPEmbedder::tokenize: seg=%d AFTER t5.encode n=%zu", seg, curr_tokens.size());
                 t5_tokens.insert(t5_tokens.end(), curr_tokens.begin(), curr_tokens.end());
                 t5_weights.insert(t5_weights.end(), curr_tokens.size(), curr_weight);
             }
+            seg++;
         }
 
+        sd2r_dbg_logf("FluxCLIPEmbedder::tokenize: BEFORE pad_tokens");
         if (clip_l) {
             clip_l_tokenizer.pad_tokens(clip_l_tokens, &clip_l_weights, nullptr, 77, 77, true);
         }
         if (t5) {
             t5_tokenizer.pad_tokens(t5_tokens, &t5_weights, nullptr, min_length, max_length, true);
         }
+        sd2r_dbg_logf("FluxCLIPEmbedder::tokenize: AFTER pad_tokens clip_l=%zu t5=%zu", clip_l_tokens.size(), t5_tokens.size());
 
         // for (int i = 0; i < clip_l_tokens.size(); i++) {
         //     std::cout << clip_l_tokens[i] << ":" << clip_l_weights[i] << ", ";
