@@ -65,7 +65,7 @@ Authors@R: c(
 Description: Provides Stable Diffusion image generation using the 'ggmlR'
     library, with no 'Python' or external API dependencies. Supports
     text-to-image and image-to-image generation for SD 1.x, SD 2.x, 'SDXL',
-    and Flux. A single sd_generate() function handles the entire pipeline,
+    Flux, and 'FLUX.2'. A single sd_generate() function handles the entire pipeline,
     including sampling and high-resolution output. Features multi-GPU support,
     a 'Shiny' GUI, and runs on CPU or 'Vulkan' GPU across Linux, macOS, and
     Windows.

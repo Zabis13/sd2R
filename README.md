@@ -13,7 +13,7 @@ sd2R exposes a high-level R interface for text-to-image and image-to-image gener
 Flux without Python:
 
 ```
-R  →  sd2R  →  ggmlR  →  ggml  →  Vulkan  →  GPU
+R  →  sd2R  →  ggmlR  →  Vulkan  →  GPU
 ```
 
 - **C++ core** (`src/sd/`): tokenizers, text encoders (CLIP, Mistral, Qwen, UMT5), diffusion UNet/MMDiT denoiser, samplers, VAE encoder/decoder, and model loading for `.safetensors` and `.gguf` weights.
@@ -39,7 +39,7 @@ R  →  sd2R  →  ggmlR  →  ggml  →  Vulkan  →  GPU
 - **Image utilities** in R: saving generated images to PNG, converting between internal tensors and R raw vectors, and simple inspection of output tensors.
 - **System introspection** via `sd_system_info()`, reporting GGML/Vulkan capabilities as detected by ggmlR at build time.
 - **Pipeline graph API**: `sd_pipeline()` + `sd_node()` for composable, sequential multi-step workflows (txt2img → upscale → img2img → save). Pipelines are serializable to JSON via `sd_save_pipeline()` / `sd_load_pipeline()`.
-- **Shiny GUI**: `sd_app()` launches an interactive web interface with auto-detection of model architecture, non-blocking async generation (C++ `std::thread`), live progress bar with ETA, and automatic role assignment for multi-file models (Flux, SD3).
+- **Shiny GUI**: `sd_app()` launches an interactive web interface with auto-detection of model architecture, non-blocking async generation (C++ `std::thread`), live progress bar with ETA, and automatic role assignment for multi-file models (Flux, FLUX.2, SD3).
 
 ## Shiny GUI
 
@@ -66,7 +66,7 @@ Rscript -e "shiny::runApp(system.file('shiny/sd2R_app', package = 'sd2R'), port 
 ```
 
 Features:
-- Auto-detects model architecture (Flux, SD3, SDXL, SD1/2) and assigns component roles (diffusion, VAE, CLIP, T5)
+- Auto-detects model architecture (Flux, FLUX.2, SD3, SDXL, SD1/2) and assigns component roles (diffusion, VAE, CLIP, T5)
 - Non-blocking generation with live progress bar and ETA
 - Shares `sd_generate()`'s auto-routing: guidance-distilled CFG (Flux/FLUX.2), VRAM-aware VAE tiling, and multi-step highres-fix all run through the async engine
 - Prevents incompatible model combinations
@@ -120,31 +120,66 @@ That's it — the app auto-detects the model and you can start generating. Re-ru
 
 ## Installation
 
+### Linux
+
+
 ```r
 # Install ggmlR first (if not already installed)
-remotes::install_github("Zabis13/ggmlR")
+install.packages("ggmlR", configure.args = "--with-simd")
 
 # Install sd2R
-remotes::install_github("Zabis13/sd2R")
+install.packages("sd2R")
+```
+
+Launch the GUI from a terminal:
+
+```
+Rscript -e "sd2R::sd_app()"
 ```
 
 During installation, the `configure` script automatically downloads tokenizer vocabulary files (~128 MB total) from GitHub Releases. This requires `curl` or `wget`.
 
-### Offline / Manual Installation
 
-If you don't have internet access during installation, download the vocabulary files manually and place them into `src/sd/` before building:
 
-```sh
-# Download from https://github.com/Zabis13/sd2R/releases/tag/assets
-# Files: vocab.hpp, vocab_mistral.hpp, vocab_qwen.hpp, vocab_umt5.hpp
+### Windows (step-by-step)
 
-wget https://github.com/Zabis13/sd2R/releases/download/assets/vocab.hpp -P src/sd/
-wget https://github.com/Zabis13/sd2R/releases/download/assets/vocab_mistral.hpp -P src/sd/
-wget https://github.com/Zabis13/sd2R/releases/download/assets/vocab_qwen.hpp -P src/sd/
-wget https://github.com/Zabis13/sd2R/releases/download/assets/vocab_umt5.hpp -P src/sd/
+Tested configuration:
 
-R CMD INSTALL .
+- **R** 4.6.0 ([R-4.6.0-win](https://cran.r-project.org/bin/windows/base/))
+- **Rtools45** ([rtools45-6768-6492](https://cran.r-project.org/bin/windows/Rtools/rtools45/))
+- **Vulkan SDK** 1.4.350.0 ([vulkansdk-windows-X64-1.4.350.0](https://vulkan.lunarg.com/sdk/home#windows)) — for GPU acceleration
+
+Install R, Rtools45, and the Vulkan SDK (use the default install paths).
+
+**From CRAN — from source with SIMD (recommended; required for GPU):**
+
+Requires Rtools45. Build from source if you want Vulkan **GPU acceleration**:
+the build enables Vulkan only when the Vulkan SDK is present at compile time
+(`configure.win` auto-detects `VULKAN_SDK`), so install the Vulkan SDK
+*before* running the commands below.
+
+SIMD is a *ggmlR* build option, enabled via the `GGML_USE_SIMD` environment
+variable. There is **no** `--with-simd` / `--configure-args="..."` flag —
+`configure.win` does not parse those, so set the environment variable instead.
+
+```r
+# --- ggmlR (tensor/Vulkan backend) with SIMD ---
+unlink("C:/Program Files/R/R-4.6.0/library/00LOCK-ggmlR", recursive = TRUE)
+Sys.setenv(GGML_USE_SIMD = "1")
+install.packages("ggmlR", type = "source")
+
+# --- sd2R ---
+unlink("C:/Program Files/R/R-4.6.0/library/00LOCK-sd2R", recursive = TRUE)
+Sys.setenv(MAKEFLAGS = "-j8")   # parallel compile; lower on fewer cores
+install.packages("sd2R", type = "source")
 ```
+
+Launch the GUI from a terminal:
+
+```
+"C:\Program Files\R\R-4.6.0\bin\Rscript.exe" -e "library(sd2R); sd_app()"
+```
+
 
 ## System Requirements
 
@@ -198,7 +233,7 @@ For a live, runnable demo see the [Kaggle notebook: Stable Diffusion in R (ggmlR
 ## See Also
 
 - [llamaR](https://github.com/Zabis13/llamaR) — LLM inference in R
-- [sd2R](https://github.com/Zabis13/sd2R) — Stable Diffusion in R
+- [ggmlR](https://github.com/Zabis13/ggmlR) — tensor/Vulkan backend for R
 - [ggml](https://github.com/ggml-org/ggml) — underlying C library
 
 ## License
