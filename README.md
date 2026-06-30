@@ -122,13 +122,77 @@ That's it — the app auto-detects the model and you can start generating. Re-ru
 
 ### Linux
 
-
 ```r
 # Install ggmlR first (if not already installed)
 install.packages("ggmlR", configure.args = "--with-simd")
 
 # Install sd2R
 install.packages("sd2R")
+```
+
+### Linux (detailed)
+
+Full step-by-step setup on Ubuntu/Debian, from a clean system to a working
+GPU build.
+
+**1. R and the Vulkan loader/tools:**
+
+```bash
+sudo apt install -y r-base
+
+sudo apt install vulkan-tools libvulkan-dev
+```
+
+**2. The `glslc` shader compiler** (needed to build ggmlR's Vulkan backend):
+
+```bash
+# Ubuntu 24.04 (Noble)
+sudo add-apt-repository universe
+sudo apt update
+sudo apt install glslc
+
+# Ubuntu 22.04 (Jammy) — install the LunarG Vulkan SDK instead
+wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | \
+  sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
+
+sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list \
+  https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+
+sudo apt update
+sudo apt install -y vulkan-sdk
+```
+
+**3. Verify the GPU is visible to Vulkan:**
+
+```bash
+vulkaninfo --summary
+```
+
+**4. Install ggmlR (the tensor/Vulkan backend) with CPU SIMD acceleration:**
+
+```bash
+sudo Rscript -e 'install.packages("ggmlR", configure.args = "--with-simd")'
+```
+
+**5. Confirm GPU support from R:**
+
+```bash
+Rscript -e 'library(ggmlR)
+ggml_vulkan_status()'
+```
+
+**6. Install sd2R:**
+
+```bash
+sudo Rscript -e 'install.packages("sd2R")'
+```
+
+or, to build the development version from GitHub:
+
+```bash
+sudo apt install -y libcurl4-openssl-dev libssl-dev libgit2-dev
+sudo Rscript -e 'install.packages("remotes")'
+sudo Rscript -e 'remotes::install_github("Zabis13/sd2R")'
 ```
 
 Launch the GUI from a terminal:
