@@ -1,3 +1,13 @@
+
+
+
+# sd2R 0.2.1.1
+
+* e-mail update
+
+---
+
+
 # sd2R 0.2.1
 
 * **Diagnostic logging**: `sd_ctx()` now logs all behavioural parameters from R at startup, the resolved weight-residency mode (resident vs streamed when `offload_params_to_cpu`/`params_backend` put params on a different backend), and a running summary of weight data re-uploaded to the GPU each pass — making silent performance regimes visible.
