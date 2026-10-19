@@ -20,7 +20,8 @@ sd_generate_multiref(
   seed = 42L,
   clip_skip = -1L,
   eta = 0,
-  batch_count = 1L
+  batch_count = 1L,
+  loras = NULL
 )
 }
 \arguments{
@@ -46,6 +47,8 @@ positional indices (model-specific; default \code{FALSE}).}
 \item{sample_steps, cfg_scale, seed, clip_skip, eta}{Standard sampling controls}
 
 \item{batch_count}{Number of images (default 1)}
+
+\item{loras}{LoRA weights: named numeric vector \code{c(path_or_name = weight)}. Prompt tags \code{<lora:name:weight>} are also accepted. See \code{\link{sd_lora}}.}
 }
 \value{
 List of sd_image lists.

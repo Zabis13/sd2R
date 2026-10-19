@@ -17,7 +17,7 @@
 library(sd2R)
 
 # ---- Paths (edit to match your setup) -------------------------------------
-models_dir <- "/mnt/Data2/DS_projects/sd_models"
+models_dir <- "/mnt/Data3/DS_Data/sd_models"
 out_dir    <- "/tmp"
 
 # FLUX.2 Klein is distributed as a *diffusion-only* file with bare tensor

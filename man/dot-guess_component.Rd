@@ -10,7 +10,7 @@
 \item{filename}{File basename}
 }
 \value{
-Character: "diffusion", "vae", "clip_l", "clip_g", "t5xxl",
+Character: "diffusion", "vae", "llm", "clip_l", "clip_g", "t5xxl",
   "taesd", or "unknown"
 }
 \description{

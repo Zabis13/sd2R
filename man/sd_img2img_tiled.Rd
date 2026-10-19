@@ -25,10 +25,11 @@ sd_img2img_tiled(
   flow_shift = NULL,
   vae_mode = "auto",
   vae_auto_threshold = 1048576L,
-  vae_tile_size = 64L,
+  vae_tile_size = 512L,
   vae_tile_overlap = 0.25,
   cache_mode = c("off", "easy", "ucache"),
-  cache_config = NULL
+  cache_config = NULL,
+  loras = NULL
 )
 }
 \arguments{
@@ -81,7 +82,10 @@ tiles only when VRAM is insufficient). Default \code{"auto"}.}
 backend, etc.). Tiling activates when \code{width * height} exceeds this
 value. Default \code{1048576L} (1024x1024 pixels).}
 
-\item{vae_tile_size}{Tile size in latent pixels for tiled VAE (default 64).
+\item{vae_tile_size}{Tile size in image pixels for tiled VAE (default 512);
+converted internally to latent cells with the model's VAE scale factor
+(8 for SD/FLUX.1, 16 for FLUX.2/FLUX.3). Before sd2R 0.2.2 it was in latent
+cells (default 64); values below 128 give a warning.
 Ignored when \code{vae_tile_rel_x}/\code{vae_tile_rel_y} are set.}
 
 \item{vae_tile_overlap}{Overlap ratio between tiles, 0.0-0.5 (default 0.25)}
@@ -92,6 +96,8 @@ Can speed up sampling 20-40\% with minor quality impact.}
 
 \item{cache_config}{Optional fine-tuned cache config from
 \code{\link{sd_cache_params}}. Overrides \code{cache_mode} when provided.}
+
+\item{loras}{LoRA weights: named numeric vector \code{c(path_or_name = weight)}. Prompt tags \code{<lora:name:weight>} are also accepted. See \code{\link{sd_lora}}.}
 }
 \value{
 List of SD images

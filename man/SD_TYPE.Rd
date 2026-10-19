@@ -5,7 +5,7 @@
 \alias{SD_TYPE}
 \title{Weight types (ggml quantization types)}
 \format{
-An object of class \code{list} of length 35.
+An object of class \code{list} of length 38.
 }
 \usage{
 SD_TYPE

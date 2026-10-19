@@ -5,7 +5,7 @@
 \alias{SCHEDULER}
 \title{Schedulers}
 \format{
-An object of class \code{list} of length 12.
+An object of class \code{list} of length 17.
 }
 \usage{
 SCHEDULER

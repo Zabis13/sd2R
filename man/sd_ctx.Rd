@@ -25,12 +25,14 @@ sd_ctx(
   max_vram = 0,
   stream_layers = FALSE,
   enable_mmap = FALSE,
+  eager_load = TRUE,
   vae_conv_direct = TRUE,
   diffusion_conv_direct = FALSE,
   diffusion_flash_attn = TRUE,
   rng_type = RNG_TYPE$CUDA,
   prediction = NULL,
   lora_apply_mode = LORA_APPLY_MODE$AUTO,
+  lora_model_dir = NULL,
   model_type = "sd1",
   vram_gb = NULL,
   device_layout = "mono",
@@ -109,6 +111,10 @@ models (e.g. Flux); pages are loaded on demand by the OS and shared across
 processes. Ignored for zip-archived weights. May slow the first generation
 slightly as pages fault in.}
 
+\item{eager_load}{Load all model weights in \code{sd_ctx()} (default TRUE).
+With FALSE, weights are loaded lazily on first use, so the first
+generation also pays the model loading time.}
+
 \item{vae_conv_direct}{Use direct Conv2d implementation in VAE (default TRUE).
 Faster on GPU; skips im2col and uses direct convolution kernels.}
 
@@ -122,10 +128,17 @@ GPU drivers or backends.}
 
 \item{prediction}{Prediction type override (see \code{PREDICTION}), NULL = auto}
 
-\item{lora_apply_mode}{LoRA application mode (see \code{LORA_APPLY_MODE})}
+\item{lora_apply_mode}{LoRA application mode (see \code{LORA_APPLY_MODE}).
+\code{IMMEDIATELY} on quantized weights loses part of the LoRA delta to
+requantization; \code{AUTO} avoids that. See \code{\link{sd_lora}}.}
+
+\item{lora_model_dir}{Directory searched for LoRA names given without a
+path (in \code{loras} or \code{<lora:name:weight>} prompt tags), with
+extensions \code{.safetensors}, \code{.gguf}, \code{.pt}, \code{.ckpt}.
+\code{NULL} = only existing file paths are accepted.}
 
 \item{model_type}{Model architecture hint: \code{"sd1"}, \code{"sd2"},
-\code{"sdxl"}, \code{"flux"}, \code{"flux2"}, \code{"sd3"}, or
+\code{"sdxl"}, \code{"flux"}, \code{"flux2"}, \code{"flux3"}, \code{"sd3"}, or
 \code{"auto"}. Used by
 \code{\link{sd_generate}} to determine native resolution and tile sizes.
 With \code{"auto"}, the type is detected from a sibling \code{config.json}

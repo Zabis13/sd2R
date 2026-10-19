@@ -5,7 +5,7 @@
 # Run: Rscript /mnt/Data2/DS_projects/sd2R/inst/examples/test_flux_encoders_cpu.R
 
 library(sd2R)
-models_dir <- "/mnt/Data2/DS_projects/sd_models"
+models_dir <- "/mnt/Data3/DS_Data/sd_models"
 
 ctx <- sd_ctx(
   diffusion_model_path = file.path(models_dir, "flux1-dev-Q4_K_S.gguf"),

@@ -14,7 +14,7 @@ library(sd2R)
 cat("=== sd2R Flux inpaint demo ===\n")
 print(sd_system_info())
 
-models_dir <- "/mnt/Data2/DS_projects/sd_models"
+models_dir <- "/mnt/Data3/DS_Data/sd_models"
 out_dir    <- "/tmp"
 
 n_gpu <- sd_vulkan_device_count()

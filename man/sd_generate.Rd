@@ -23,7 +23,7 @@ sd_generate(
   flow_shift = NULL,
   hr_strength = 0.4,
   vae_mode = "auto",
-  vae_tile_size = 64L,
+  vae_tile_size = 512L,
   vae_tile_overlap = 0.25,
   cache_mode = c("off", "easy", "ucache"),
   cache_config = NULL,
@@ -31,7 +31,8 @@ sd_generate(
   preview = FALSE,
   preview_path = NULL,
   preview_mode = PREVIEW$PROJ,
-  preview_interval = 1L
+  preview_interval = 1L,
+  loras = NULL
 )
 }
 \arguments{
@@ -79,7 +80,10 @@ value to override. Ignored by non-flow models.}
 only when estimated peak VAE usage exceeds available VRAM minus a 50 MB
 reserve). Default \code{"auto"}.}
 
-\item{vae_tile_size}{Tile size for VAE tiling (default 64)}
+\item{vae_tile_size}{Tile size in image pixels for tiled VAE (default 512);
+converted internally to latent cells with the model's VAE scale factor
+(8 for SD/FLUX.1, 16 for FLUX.2/FLUX.3). Before sd2R 0.2.2 it was in latent
+cells (default 64); values below 128 give a warning.}
 
 \item{vae_tile_overlap}{Overlap for VAE tiling (default 0.25)}
 
@@ -105,6 +109,8 @@ when \code{preview = TRUE}.}
 \code{"proj"}.}
 
 \item{preview_interval}{Emit a preview every N steps (default 1).}
+
+\item{loras}{LoRA weights: named numeric vector \code{c(path_or_name = weight)}. Prompt tags \code{<lora:name:weight>} are also accepted. See \code{\link{sd_lora}}.}
 }
 \value{
 List of SD images (or single image for highres fix path).

@@ -1,5 +1,13 @@
+# sd2R 0.2.2
 
+* C++ core updated to stable-diffusion.cpp master (2026-10). Requires ggmlR >= 0.8.8.
+* FLUX.3 Image Klein support (`model_type = "flux3"`), incl. edit with reference images and the step-wise API (see README).
+* **Breaking:** `vae_tile_size` is now in image pixels (default 512) instead of latent cells.
+* New `eager_load` argument in `sd_ctx()`.
+* New samplers, schedulers and step cache mode `SPECTRUM`.
+* Tokenizers no longer use `std::regex` (fixes hangs on Windows).
 
+---
 
 # sd2R 0.2.1.1
 

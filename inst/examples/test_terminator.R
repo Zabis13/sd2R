@@ -1,6 +1,6 @@
 library(sd2R)
 
-model_path <- "/mnt/Data2/DS_projects/sd_models/v1-5-pruned-emaonly.safetensors"
+model_path <- "/mnt/Data3/DS_Data/sd_models/v1-5-pruned-emaonly.safetensors"
 
 ctx <- sd_ctx(model_path, n_threads = 4L, model_type = "sd1",
               vae_decode_only = FALSE, verbose = FALSE)

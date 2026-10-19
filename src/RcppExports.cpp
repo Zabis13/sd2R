@@ -190,6 +190,113 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// sd_system_info_cpp
+std::string sd_system_info_cpp();
+RcppExport SEXP _sd2R_sd_system_info_cpp() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(sd_system_info_cpp());
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_version_cpp
+std::string sd_version_cpp();
+RcppExport SEXP _sd2R_sd_version_cpp() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(sd_version_cpp());
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_num_physical_cores_cpp
+int sd_num_physical_cores_cpp();
+RcppExport SEXP _sd2R_sd_num_physical_cores_cpp() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(sd_num_physical_cores_cpp());
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_type_name_cpp
+std::string sd_type_name_cpp(int type);
+RcppExport SEXP _sd2R_sd_type_name_cpp(SEXP typeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type type(typeSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_type_name_cpp(type));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_sample_method_name_cpp
+std::string sd_sample_method_name_cpp(int method);
+RcppExport SEXP _sd2R_sd_sample_method_name_cpp(SEXP methodSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type method(methodSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_sample_method_name_cpp(method));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_scheduler_name_cpp
+std::string sd_scheduler_name_cpp(int sched);
+RcppExport SEXP _sd2R_sd_scheduler_name_cpp(SEXP schedSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type sched(schedSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_scheduler_name_cpp(sched));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_generate_image
+Rcpp::List sd_generate_image(SEXP ctx_sexp, Rcpp::List params);
+RcppExport SEXP _sd2R_sd_generate_image(SEXP ctx_sexpSEXP, SEXP paramsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type params(paramsSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_generate_image(ctx_sexp, params));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_generate_async
+bool sd_generate_async(SEXP ctx_sexp, Rcpp::List params);
+RcppExport SEXP _sd2R_sd_generate_async(SEXP ctx_sexpSEXP, SEXP paramsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type params(paramsSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_generate_async(ctx_sexp, params));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_generate_poll
+Rcpp::List sd_generate_poll();
+RcppExport SEXP _sd2R_sd_generate_poll() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(sd_generate_poll());
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_generate_result
+Rcpp::List sd_generate_result();
+RcppExport SEXP _sd2R_sd_generate_result() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(sd_generate_result());
+    return rcpp_result_gen;
+END_RCPP
+}
 // sd_ctx_version_cpp
 int sd_ctx_version_cpp(SEXP ctx_sexp);
 RcppExport SEXP _sd2R_sd_ctx_version_cpp(SEXP ctx_sexpSEXP) {
@@ -209,6 +316,28 @@ BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
     rcpp_result_gen = Rcpp::wrap(sd_ctx_supports_ref_cpp(ctx_sexp));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_ctx_lora_apply_mode_cpp
+int sd_ctx_lora_apply_mode_cpp(SEXP ctx_sexp);
+RcppExport SEXP _sd2R_sd_ctx_lora_apply_mode_cpp(SEXP ctx_sexpSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_ctx_lora_apply_mode_cpp(ctx_sexp));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_ctx_lora_stats_cpp
+Rcpp::DataFrame sd_ctx_lora_stats_cpp(SEXP ctx_sexp);
+RcppExport SEXP _sd2R_sd_ctx_lora_stats_cpp(SEXP ctx_sexpSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_ctx_lora_stats_cpp(ctx_sexp));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -337,8 +466,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // sd_denoise_step_cpp
-SEXP sd_denoise_step_cpp(SEXP ctx_sexp, SEXP x_in, double sigma, Rcpp::List cond, Rcpp::List uncond, double cfg_scale, int step, int total_steps);
-RcppExport SEXP _sd2R_sd_denoise_step_cpp(SEXP ctx_sexpSEXP, SEXP x_inSEXP, SEXP sigmaSEXP, SEXP condSEXP, SEXP uncondSEXP, SEXP cfg_scaleSEXP, SEXP stepSEXP, SEXP total_stepsSEXP) {
+SEXP sd_denoise_step_cpp(SEXP ctx_sexp, SEXP x_in, double sigma, Rcpp::List cond, Rcpp::List uncond, double cfg_scale, int step, int total_steps, double sigma_next);
+RcppExport SEXP _sd2R_sd_denoise_step_cpp(SEXP ctx_sexpSEXP, SEXP x_inSEXP, SEXP sigmaSEXP, SEXP condSEXP, SEXP uncondSEXP, SEXP cfg_scaleSEXP, SEXP stepSEXP, SEXP total_stepsSEXP, SEXP sigma_nextSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -350,82 +479,22 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type cfg_scale(cfg_scaleSEXP);
     Rcpp::traits::input_parameter< int >::type step(stepSEXP);
     Rcpp::traits::input_parameter< int >::type total_steps(total_stepsSEXP);
-    rcpp_result_gen = Rcpp::wrap(sd_denoise_step_cpp(ctx_sexp, x_in, sigma, cond, uncond, cfg_scale, step, total_steps));
+    Rcpp::traits::input_parameter< double >::type sigma_next(sigma_nextSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_denoise_step_cpp(ctx_sexp, x_in, sigma, cond, uncond, cfg_scale, step, total_steps, sigma_next));
     return rcpp_result_gen;
 END_RCPP
 }
-// sd_generate_image
-Rcpp::List sd_generate_image(SEXP ctx_sexp, Rcpp::List params);
-RcppExport SEXP _sd2R_sd_generate_image(SEXP ctx_sexpSEXP, SEXP paramsSEXP) {
+// sd_euler_step_cpp
+SEXP sd_euler_step_cpp(SEXP x_in, SEXP den_in, double sigma, double sigma_next);
+RcppExport SEXP _sd2R_sd_euler_step_cpp(SEXP x_inSEXP, SEXP den_inSEXP, SEXP sigmaSEXP, SEXP sigma_nextSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
-    Rcpp::traits::input_parameter< Rcpp::List >::type params(paramsSEXP);
-    rcpp_result_gen = Rcpp::wrap(sd_generate_image(ctx_sexp, params));
-    return rcpp_result_gen;
-END_RCPP
-}
-// sd_system_info_cpp
-std::string sd_system_info_cpp();
-RcppExport SEXP _sd2R_sd_system_info_cpp() {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(sd_system_info_cpp());
-    return rcpp_result_gen;
-END_RCPP
-}
-// sd_version_cpp
-std::string sd_version_cpp();
-RcppExport SEXP _sd2R_sd_version_cpp() {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(sd_version_cpp());
-    return rcpp_result_gen;
-END_RCPP
-}
-// sd_num_physical_cores_cpp
-int sd_num_physical_cores_cpp();
-RcppExport SEXP _sd2R_sd_num_physical_cores_cpp() {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(sd_num_physical_cores_cpp());
-    return rcpp_result_gen;
-END_RCPP
-}
-// sd_type_name_cpp
-std::string sd_type_name_cpp(int type);
-RcppExport SEXP _sd2R_sd_type_name_cpp(SEXP typeSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< int >::type type(typeSEXP);
-    rcpp_result_gen = Rcpp::wrap(sd_type_name_cpp(type));
-    return rcpp_result_gen;
-END_RCPP
-}
-// sd_sample_method_name_cpp
-std::string sd_sample_method_name_cpp(int method);
-RcppExport SEXP _sd2R_sd_sample_method_name_cpp(SEXP methodSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< int >::type method(methodSEXP);
-    rcpp_result_gen = Rcpp::wrap(sd_sample_method_name_cpp(method));
-    return rcpp_result_gen;
-END_RCPP
-}
-// sd_scheduler_name_cpp
-std::string sd_scheduler_name_cpp(int sched);
-RcppExport SEXP _sd2R_sd_scheduler_name_cpp(SEXP schedSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< int >::type sched(schedSEXP);
-    rcpp_result_gen = Rcpp::wrap(sd_scheduler_name_cpp(sched));
+    Rcpp::traits::input_parameter< SEXP >::type x_in(x_inSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type den_in(den_inSEXP);
+    Rcpp::traits::input_parameter< double >::type sigma(sigmaSEXP);
+    Rcpp::traits::input_parameter< double >::type sigma_next(sigma_nextSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_euler_step_cpp(x_in, den_in, sigma, sigma_next));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -473,38 +542,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// sd_generate_async
-bool sd_generate_async(SEXP ctx_sexp, Rcpp::List params);
-RcppExport SEXP _sd2R_sd_generate_async(SEXP ctx_sexpSEXP, SEXP paramsSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
-    Rcpp::traits::input_parameter< Rcpp::List >::type params(paramsSEXP);
-    rcpp_result_gen = Rcpp::wrap(sd_generate_async(ctx_sexp, params));
-    return rcpp_result_gen;
-END_RCPP
-}
-// sd_generate_poll
-Rcpp::List sd_generate_poll();
-RcppExport SEXP _sd2R_sd_generate_poll() {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(sd_generate_poll());
-    return rcpp_result_gen;
-END_RCPP
-}
-// sd_generate_result
-Rcpp::List sd_generate_result();
-RcppExport SEXP _sd2R_sd_generate_result() {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(sd_generate_result());
-    return rcpp_result_gen;
-END_RCPP
-}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_sd2R_sd_set_progress_file", (DL_FUNC) &_sd2R_sd_set_progress_file, 1},
@@ -525,8 +562,20 @@ static const R_CallMethodDef CallEntries[] = {
     {"_sd2R_sd_create_context_async", (DL_FUNC) &_sd2R_sd_create_context_async, 1},
     {"_sd2R_sd_create_context_poll", (DL_FUNC) &_sd2R_sd_create_context_poll, 0},
     {"_sd2R_sd_create_context_result", (DL_FUNC) &_sd2R_sd_create_context_result, 0},
+    {"_sd2R_sd_system_info_cpp", (DL_FUNC) &_sd2R_sd_system_info_cpp, 0},
+    {"_sd2R_sd_version_cpp", (DL_FUNC) &_sd2R_sd_version_cpp, 0},
+    {"_sd2R_sd_num_physical_cores_cpp", (DL_FUNC) &_sd2R_sd_num_physical_cores_cpp, 0},
+    {"_sd2R_sd_type_name_cpp", (DL_FUNC) &_sd2R_sd_type_name_cpp, 1},
+    {"_sd2R_sd_sample_method_name_cpp", (DL_FUNC) &_sd2R_sd_sample_method_name_cpp, 1},
+    {"_sd2R_sd_scheduler_name_cpp", (DL_FUNC) &_sd2R_sd_scheduler_name_cpp, 1},
+    {"_sd2R_sd_generate_image", (DL_FUNC) &_sd2R_sd_generate_image, 2},
+    {"_sd2R_sd_generate_async", (DL_FUNC) &_sd2R_sd_generate_async, 2},
+    {"_sd2R_sd_generate_poll", (DL_FUNC) &_sd2R_sd_generate_poll, 0},
+    {"_sd2R_sd_generate_result", (DL_FUNC) &_sd2R_sd_generate_result, 0},
     {"_sd2R_sd_ctx_version_cpp", (DL_FUNC) &_sd2R_sd_ctx_version_cpp, 1},
     {"_sd2R_sd_ctx_supports_ref_cpp", (DL_FUNC) &_sd2R_sd_ctx_supports_ref_cpp, 1},
+    {"_sd2R_sd_ctx_lora_apply_mode_cpp", (DL_FUNC) &_sd2R_sd_ctx_lora_apply_mode_cpp, 1},
+    {"_sd2R_sd_ctx_lora_stats_cpp", (DL_FUNC) &_sd2R_sd_ctx_lora_stats_cpp, 1},
     {"_sd2R_sd_encode_text_cpp", (DL_FUNC) &_sd2R_sd_encode_text_cpp, 5},
     {"_sd2R_sd_encode_image_cpp", (DL_FUNC) &_sd2R_sd_encode_image_cpp, 2},
     {"_sd2R_sd_decode_latent_cpp", (DL_FUNC) &_sd2R_sd_decode_latent_cpp, 2},
@@ -536,20 +585,11 @@ static const R_CallMethodDef CallEntries[] = {
     {"_sd2R_sd_sampler_end_cpp", (DL_FUNC) &_sd2R_sd_sampler_end_cpp, 1},
     {"_sd2R_sd_noise_scale_cpp", (DL_FUNC) &_sd2R_sd_noise_scale_cpp, 4},
     {"_sd2R_sd_inverse_noise_scale_cpp", (DL_FUNC) &_sd2R_sd_inverse_noise_scale_cpp, 3},
-    {"_sd2R_sd_denoise_step_cpp", (DL_FUNC) &_sd2R_sd_denoise_step_cpp, 8},
-    {"_sd2R_sd_generate_image", (DL_FUNC) &_sd2R_sd_generate_image, 2},
-    {"_sd2R_sd_system_info_cpp", (DL_FUNC) &_sd2R_sd_system_info_cpp, 0},
-    {"_sd2R_sd_version_cpp", (DL_FUNC) &_sd2R_sd_version_cpp, 0},
-    {"_sd2R_sd_num_physical_cores_cpp", (DL_FUNC) &_sd2R_sd_num_physical_cores_cpp, 0},
-    {"_sd2R_sd_type_name_cpp", (DL_FUNC) &_sd2R_sd_type_name_cpp, 1},
-    {"_sd2R_sd_sample_method_name_cpp", (DL_FUNC) &_sd2R_sd_sample_method_name_cpp, 1},
-    {"_sd2R_sd_scheduler_name_cpp", (DL_FUNC) &_sd2R_sd_scheduler_name_cpp, 1},
+    {"_sd2R_sd_denoise_step_cpp", (DL_FUNC) &_sd2R_sd_denoise_step_cpp, 9},
+    {"_sd2R_sd_euler_step_cpp", (DL_FUNC) &_sd2R_sd_euler_step_cpp, 4},
     {"_sd2R_sd_create_upscaler", (DL_FUNC) &_sd2R_sd_create_upscaler, 5},
     {"_sd2R_sd_upscale", (DL_FUNC) &_sd2R_sd_upscale, 3},
     {"_sd2R_sd_convert_model", (DL_FUNC) &_sd2R_sd_convert_model, 6},
-    {"_sd2R_sd_generate_async", (DL_FUNC) &_sd2R_sd_generate_async, 2},
-    {"_sd2R_sd_generate_poll", (DL_FUNC) &_sd2R_sd_generate_poll, 0},
-    {"_sd2R_sd_generate_result", (DL_FUNC) &_sd2R_sd_generate_result, 0},
     {NULL, NULL, 0}
 };
 

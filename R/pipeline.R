@@ -41,6 +41,9 @@
 #'   models (e.g. Flux); pages are loaded on demand by the OS and shared across
 #'   processes. Ignored for zip-archived weights. May slow the first generation
 #'   slightly as pages fault in.
+#' @param eager_load Load all model weights in \code{sd_ctx()} (default TRUE).
+#'   With FALSE, weights are loaded lazily on first use, so the first
+#'   generation also pays the model loading time.
 #' @param vae_conv_direct Use direct Conv2d implementation in VAE (default TRUE).
 #'   Faster on GPU; skips im2col and uses direct convolution kernels.
 #' @param diffusion_conv_direct Use direct Conv2d in diffusion model (default FALSE).
@@ -49,9 +52,15 @@
 #'   GPU drivers or backends.
 #' @param rng_type RNG type (see \code{RNG_TYPE})
 #' @param prediction Prediction type override (see \code{PREDICTION}), NULL = auto
-#' @param lora_apply_mode LoRA application mode (see \code{LORA_APPLY_MODE})
+#' @param lora_apply_mode LoRA application mode (see \code{LORA_APPLY_MODE}).
+#'   \code{IMMEDIATELY} on quantized weights loses part of the LoRA delta to
+#'   requantization; \code{AUTO} avoids that. See \code{\link{sd_lora}}.
+#' @param lora_model_dir Directory searched for LoRA names given without a
+#'   path (in \code{loras} or \code{<lora:name:weight>} prompt tags), with
+#'   extensions \code{.safetensors}, \code{.gguf}, \code{.pt}, \code{.ckpt}.
+#'   \code{NULL} = only existing file paths are accepted.
 #' @param model_type Model architecture hint: \code{"sd1"}, \code{"sd2"},
-#'   \code{"sdxl"}, \code{"flux"}, \code{"flux2"}, \code{"sd3"}, or
+#'   \code{"sdxl"}, \code{"flux"}, \code{"flux2"}, \code{"flux3"}, \code{"sd3"}, or
 #'   \code{"auto"}. Used by
 #'   \code{\link{sd_generate}} to determine native resolution and tile sizes.
 #'   With \code{"auto"}, the type is detected from a sibling \code{config.json}
@@ -132,12 +141,14 @@ sd_ctx <- function(model_path = NULL,
                    max_vram = 0,
                    stream_layers = FALSE,
                    enable_mmap = FALSE,
+                   eager_load = TRUE,
                    vae_conv_direct = TRUE,
                    diffusion_conv_direct = FALSE,
                    diffusion_flash_attn = TRUE,
                    rng_type = RNG_TYPE$CUDA,
                    prediction = NULL,
                    lora_apply_mode = LORA_APPLY_MODE$AUTO,
+                   lora_model_dir = NULL,
                    model_type = "sd1",
                    vram_gb = NULL,
                    device_layout = "mono",
@@ -156,7 +167,7 @@ sd_ctx <- function(model_path = NULL,
     stop("Either model_path or diffusion_model_path must be provided", call. = FALSE)
   }
   model_type <- match.arg(model_type,
-                          c("sd1", "sd2", "sdxl", "flux", "flux2", "sd3",
+                          c("sd1", "sd2", "sdxl", "flux", "flux2", "flux3", "sd3",
                             "auto"))
   if (identical(model_type, "auto")) {
     detect_path <- if (!is.null(model_path)) model_path else diffusion_model_path
@@ -176,6 +187,7 @@ sd_ctx <- function(model_path = NULL,
     max_vram = as.numeric(max_vram),
     stream_layers = stream_layers,
     enable_mmap = enable_mmap,
+    eager_load = eager_load,
     vae_conv_direct = vae_conv_direct,
     diffusion_conv_direct = diffusion_conv_direct,
     diffusion_flash_attn = diffusion_flash_attn,
@@ -236,6 +248,17 @@ sd_ctx <- function(model_path = NULL,
   ctx <- sd_create_context(params)
   attr(ctx, "model_type") <- model_type
   attr(ctx, "vae_decode_only") <- vae_decode_only
+  attr(ctx, "lora_model_dir") <- if (is.null(lora_model_dir)) NULL else normalizePath(lora_model_dir, mustWork = FALSE)
+  # Effective LoRA mode (known once the model is loaded, i.e. with eager_load).
+  if (isTRUE(eager_load)) {
+    attr(ctx, "lora_apply_mode") <- sd_lora_apply_mode(ctx)
+    if (as.integer(lora_apply_mode) == LORA_APPLY_MODE$IMMEDIATELY &&
+        identical(attr(ctx, "lora_apply_mode"), "at_runtime")) {
+      warning("lora_apply_mode = IMMEDIATELY is not supported for this model's weight ",
+              "types on this backend (e.g. K-quants on Vulkan); using AT_RUNTIME.",
+              call. = FALSE)
+    }
+  }
   attr(ctx, "vram_gb") <- vram_gb
 
   # Cache total VRAM for auto-routing (one-time Vulkan query)
@@ -318,7 +341,10 @@ sd_destroy_context <- function(ctx) {
 #'   \code{"auto"} (VRAM-aware: queries free GPU memory and enables tiling
 #'   only when estimated peak VAE usage exceeds available VRAM minus a 50 MB
 #'   reserve). Default \code{"auto"}.
-#' @param vae_tile_size Tile size for VAE tiling (default 64)
+#' @param vae_tile_size Tile size in image pixels for tiled VAE (default 512);
+#'   converted internally to latent cells with the model's VAE scale factor
+#'   (8 for SD/FLUX.1, 16 for FLUX.2/FLUX.3). Before sd2R 0.2.2 it was in latent
+#'   cells (default 64); values below 128 give a warning.
 #' @param vae_tile_overlap Overlap for VAE tiling (default 0.25)
 #' @param cache_mode Step caching mode: \code{"off"} (default), \code{"easy"}
 #'   (EasyCache), or \code{"ucache"} (UCache).
@@ -336,6 +362,7 @@ sd_destroy_context <- function(ctx) {
 #' @param preview_mode Preview decode mode (see \code{PREVIEW}); default
 #'   \code{"proj"}.
 #' @param preview_interval Emit a preview every N steps (default 1).
+#' @param loras LoRA weights: named numeric vector \code{c(path_or_name = weight)}. Prompt tags \code{<lora:name:weight>} are also accepted. See \code{\link{sd_lora}}.
 #' @return List of SD images (or single image for highres fix path).
 #' @export
 #' @examples
@@ -368,7 +395,7 @@ sd_generate <- function(ctx,
                         flow_shift = NULL,
                         hr_strength = 0.4,
                         vae_mode = "auto",
-                        vae_tile_size = 64L,
+                        vae_tile_size = 512L,
                         vae_tile_overlap = 0.25,
                         cache_mode = c("off", "easy", "ucache"),
                         cache_config = NULL,
@@ -376,7 +403,8 @@ sd_generate <- function(ctx,
                         preview = FALSE,
                         preview_path = NULL,
                         preview_mode = PREVIEW$PROJ,
-                        preview_interval = 1L) {
+                        preview_interval = 1L,
+                        loras = NULL) {
   # Merge a params baseline (sd_default_params()) under the explicit args.
   # An argument counts as "explicit" only when the caller named it; for those,
   # the passed value wins. Everything else is taken from `params`, falling back
@@ -444,10 +472,12 @@ sd_generate <- function(ctx,
   height <- as.integer(height)
   model_type <- attr(ctx, "model_type") %||% "sd1"
 
-  # Flux / Flux.2 use guidance-distilled models; cfg_scale should default to 1.0
-  if (model_type %in% c("flux", "flux2") && cfg_scale == 7.0) {
+  # Flux / Flux.2 / Flux.3 use guidance-distilled models; cfg_scale should default to 1.0
+  if (model_type %in% c("flux", "flux2", "flux3") && cfg_scale == 7.0) {
     cfg_scale <- 1.0
   }
+  # Flux.3 Klein is step-distilled: 16 steps by default
+  if (model_type == "flux3" && sample_steps == 20L) sample_steps <- 16L
   is_img2img <- !is.null(init_image)
 
   # Determine strategy
@@ -458,6 +488,7 @@ sd_generate <- function(ctx,
   if (is_img2img) {
     if (strategy == "tiled") {
       sd_img2img_tiled(ctx, prompt,
+                       loras = loras,
                        init_image = init_image,
                        negative_prompt = negative_prompt,
                        width = width, height = height,
@@ -475,6 +506,7 @@ sd_generate <- function(ctx,
                        cache_config = cache_config)
     } else {
       sd_img2img(ctx, prompt,
+                 loras = loras,
                  init_image = init_image,
                  negative_prompt = negative_prompt,
                  width = width, height = height,
@@ -494,6 +526,7 @@ sd_generate <- function(ctx,
   } else {
     if (strategy == "highres_fix") {
       img <- sd_highres_fix(ctx, prompt,
+                            loras = loras,
                             negative_prompt = negative_prompt,
                             width = width, height = height,
                             sample_method = sample_method,
@@ -510,6 +543,7 @@ sd_generate <- function(ctx,
       list(img)
     } else if (strategy == "tiled") {
       sd_txt2img_tiled(ctx, prompt,
+                       loras = loras,
                        negative_prompt = negative_prompt,
                        width = width, height = height,
                        sample_method = sample_method,
@@ -525,6 +559,7 @@ sd_generate <- function(ctx,
                        cache_config = cache_config)
     } else {
       sd_txt2img(ctx, prompt,
+                 loras = loras,
                  negative_prompt = negative_prompt,
                  width = width, height = height,
                  sample_method = sample_method,
@@ -665,7 +700,7 @@ sd_generate <- function(ctx,
                               upscale_factor = 4L,
                               vae_mode = "auto",
                               vae_auto_threshold = 1048576L,
-                              vae_tile_size = 64L,
+                              vae_tile_size = 512L,
                               vae_tile_overlap = 0.25,
                               cache_mode = c("off", "easy", "ucache"),
                               cache_config = NULL) {
@@ -675,8 +710,10 @@ sd_generate <- function(ctx,
   height <- as.integer(height)
 
   model_type <- attr(ctx, "model_type") %||% "sd1"
-  # Flux / Flux.2 are guidance-distilled: cfg_scale must be ~1.0, not 7.0.
-  if (model_type %in% c("flux", "flux2") && cfg_scale == 7.0) cfg_scale <- 1.0
+  # Flux / Flux.2 / Flux.3 are guidance-distilled: cfg_scale must be ~1.0, not 7.0.
+  if (model_type %in% c("flux", "flux2", "flux3") && cfg_scale == 7.0) cfg_scale <- 1.0
+  # Flux.3 Klein is step-distilled: 16 steps by default
+  if (model_type == "flux3" && sample_steps == 20L) sample_steps <- 16L
 
   is_img2img      <- !is.null(init_image)
   vae_decode_only <- attr(ctx, "vae_decode_only") %||% TRUE
@@ -748,7 +785,7 @@ sd_generate <- function(ctx,
   base_w <- max(base_w, 64L); base_h <- max(base_h, 64L)
 
   # DiT denoisers (Flux/Flux.2/SD3) can't use tiled sampling for the refine pass.
-  refine_tiled <- !(model_type %in% c("flux", "flux2", "sd3"))
+  refine_tiled <- !(model_type %in% c("flux", "flux2", "flux3", "sd3"))
 
   list(
     gen_step(base_w, base_h, sample_steps, 0.0,
@@ -790,7 +827,10 @@ sd_generate <- function(ctx,
 #'   \code{vae_mode = "auto"} when VRAM query is unavailable (no Vulkan, CPU
 #'   backend, etc.). Tiling activates when \code{width * height} exceeds this
 #'   value. Default \code{1048576L} (1024x1024 pixels).
-#' @param vae_tile_size Tile size in latent pixels for tiled VAE (default 64).
+#' @param vae_tile_size Tile size in image pixels for tiled VAE (default 512);
+#'   converted internally to latent cells with the model's VAE scale factor
+#'   (8 for SD/FLUX.1, 16 for FLUX.2/FLUX.3). Before sd2R 0.2.2 it was in latent
+#'   cells (default 64); values below 128 give a warning.
 #'   Ignored when \code{vae_tile_rel_x}/\code{vae_tile_rel_y} are set.
 #' @param vae_tile_overlap Overlap ratio between tiles, 0.0-0.5 (default 0.25)
 #' @param vae_tile_rel_x Relative tile width as fraction of latent width (0-1)
@@ -806,6 +846,7 @@ sd_generate <- function(ctx,
 #'   Can speed up sampling 20-40\% with minor quality impact.
 #' @param cache_config Optional fine-tuned cache config from
 #'   \code{\link{sd_cache_params}}. Overrides \code{cache_mode} when provided.
+#' @param loras LoRA weights: named numeric vector \code{c(path_or_name = weight)}. Prompt tags \code{<lora:name:weight>} are also accepted. See \code{\link{sd_lora}}.
 #' @return List of SD images. Each image is a list with
 #'   width, height, channel, and data (raw vector of RGB pixels).
 #'   Use \code{\link{sd_save_image}} to save or \code{\link{sd_image_to_array}} to convert.
@@ -828,13 +869,14 @@ sd_txt2img <- function(ctx,
                        control_strength = 0.9,
                        vae_mode = "auto",
                        vae_auto_threshold = 1048576L,
-                       vae_tile_size = 64L,
+                       vae_tile_size = 512L,
                        vae_tile_overlap = 0.25,
                        vae_tile_rel_x = NULL,
                        vae_tile_rel_y = NULL,
                        vae_tiling = NULL,
                        cache_mode = c("off", "easy", "ucache"),
-                       cache_config = NULL) {
+                       cache_config = NULL,
+                       loras = NULL) {
   # Resolve string names to integer enum values
   if (is.character(sample_method)) {
     sm <- SAMPLE_METHOD[[sample_method]]
@@ -890,7 +932,7 @@ sd_txt2img <- function(ctx,
   }
   params <- .apply_cache_params(params, cache_mode, cache_config)
 
-  sd_generate_image(ctx, params)
+  .sd_generate_with_loras(ctx, params, loras)
 }
 
 #' Generate images with img2img
@@ -904,6 +946,7 @@ sd_txt2img <- function(ctx,
 #'   White (255) = regenerate that region, black (0) = keep the original. Must
 #'   match the init image dimensions. When \code{NULL} (default) the whole image
 #'   is denoised (plain img2img).
+#' @param loras LoRA weights: named numeric vector \code{c(path_or_name = weight)}. Prompt tags \code{<lora:name:weight>} are also accepted. See \code{\link{sd_lora}}.
 #' @return List of SD images
 #' @export
 sd_img2img <- function(ctx,
@@ -925,13 +968,14 @@ sd_img2img <- function(ctx,
                        flow_shift = NULL,
                        vae_mode = "auto",
                        vae_auto_threshold = 1048576L,
-                       vae_tile_size = 64L,
+                       vae_tile_size = 512L,
                        vae_tile_overlap = 0.25,
                        vae_tile_rel_x = NULL,
                        vae_tile_rel_y = NULL,
                        vae_tiling = NULL,
                        cache_mode = c("off", "easy", "ucache"),
-                       cache_config = NULL) {
+                       cache_config = NULL,
+                       loras = NULL) {
   # FIX: sd_ctx() defaults to vae_decode_only=TRUE, but img2img needs the VAE
   # encoder (encode_first_stage). Without this check, the C++ code hits
   # GGML_ASSERT(!decode_only || decode_graph) in vae.hpp:719.
@@ -1007,7 +1051,7 @@ sd_img2img <- function(ctx,
   }
   params <- .apply_cache_params(params, cache_mode, cache_config)
 
-  sd_generate_image(ctx, params)
+  .sd_generate_with_loras(ctx, params, loras)
 }
 
 #' Tiled diffusion sampling (MultiDiffusion)
@@ -1027,6 +1071,7 @@ sd_img2img <- function(ctx,
 #'   One latent pixel = \code{vae_scale_factor} image pixels (typically 8).
 #' @param sample_tile_overlap Overlap between tiles as fraction of tile size,
 #'   0.0-0.5 (default 0.25).
+#' @param loras LoRA weights: named numeric vector \code{c(path_or_name = weight)}. Prompt tags \code{<lora:name:weight>} are also accepted. See \code{\link{sd_lora}}.
 #' @return List of SD images
 #' @export
 #' @examples
@@ -1054,12 +1099,13 @@ sd_txt2img_tiled <- function(ctx,
                               flow_shift = NULL,
                               vae_mode = "auto",
                               vae_auto_threshold = 1048576L,
-                              vae_tile_size = 64L,
+                              vae_tile_size = 512L,
                               vae_tile_overlap = 0.25,
                               vae_tile_rel_x = NULL,
                               vae_tile_rel_y = NULL,
                               cache_mode = c("off", "easy", "ucache"),
-                              cache_config = NULL) {
+                              cache_config = NULL,
+                              loras = NULL) {
   # Auto-detect sample tile size from model type
   if (is.null(sample_tile_size)) {
     model_type <- attr(ctx, "model_type") %||% "sd1"
@@ -1111,7 +1157,7 @@ sd_txt2img_tiled <- function(ctx,
   }
   params <- .apply_cache_params(params, cache_mode, cache_config)
 
-  sd_generate_image(ctx, params)
+  .sd_generate_with_loras(ctx, params, loras)
 }
 
 #' Tiled img2img (MultiDiffusion with init image)
@@ -1123,6 +1169,7 @@ sd_txt2img_tiled <- function(ctx,
 #' @inheritParams sd_img2img
 #' @param sample_tile_size Tile size in latent pixels (default auto from model)
 #' @param sample_tile_overlap Overlap fraction 0.0-0.5 (default 0.25)
+#' @param loras LoRA weights: named numeric vector \code{c(path_or_name = weight)}. Prompt tags \code{<lora:name:weight>} are also accepted. See \code{\link{sd_lora}}.
 #' @return List of SD images
 #' @keywords internal
 sd_img2img_tiled <- function(ctx,
@@ -1145,10 +1192,11 @@ sd_img2img_tiled <- function(ctx,
                               flow_shift = NULL,
                               vae_mode = "auto",
                               vae_auto_threshold = 1048576L,
-                              vae_tile_size = 64L,
+                              vae_tile_size = 512L,
                               vae_tile_overlap = 0.25,
                               cache_mode = c("off", "easy", "ucache"),
-                              cache_config = NULL) {
+                              cache_config = NULL,
+                              loras = NULL) {
   # FIX: same vae_decode_only guard as sd_img2img (see vae.hpp:719)
   if (isTRUE(attr(ctx, "vae_decode_only"))) {
     stop("img2img requires VAE encoder. Recreate context with vae_decode_only = FALSE.",
@@ -1202,7 +1250,7 @@ sd_img2img_tiled <- function(ctx,
   }
   params <- .apply_cache_params(params, cache_mode, cache_config)
 
-  sd_generate_image(ctx, params)
+  .sd_generate_with_loras(ctx, params, loras)
 }
 
 #' High-resolution image generation (Highres Fix)
@@ -1221,6 +1269,7 @@ sd_img2img_tiled <- function(ctx,
 #' @param sample_tile_overlap Tile overlap fraction (default 0.25)
 #' @param upscaler Path to ESRGAN model for upscaling. If NULL, uses bilinear.
 #' @param upscale_factor ESRGAN upscale factor (default 4, only used with upscaler)
+#' @param loras LoRA weights: named numeric vector \code{c(path_or_name = weight)}. Prompt tags \code{<lora:name:weight>} are also accepted. See \code{\link{sd_lora}}.
 #' @return SD image (single image, not list)
 #' @keywords internal
 sd_highres_fix <- function(ctx,
@@ -1244,10 +1293,11 @@ sd_highres_fix <- function(ctx,
                             upscale_factor = 4L,
                             vae_mode = "auto",
                             vae_auto_threshold = 1048576L,
-                            vae_tile_size = 64L,
+                            vae_tile_size = 512L,
                             vae_tile_overlap = 0.25,
                             cache_mode = c("off", "easy", "ucache"),
-                            cache_config = NULL) {
+                            cache_config = NULL,
+                            loras = NULL) {
   width <- as.integer(width)
   height <- as.integer(height)
   if (is.null(hr_steps)) hr_steps <- sample_steps
@@ -1269,6 +1319,7 @@ sd_highres_fix <- function(ctx,
 
   message(sprintf("[highres_fix] Step 1: base %dx%d", base_w, base_h))
   base_imgs <- sd_txt2img(ctx, prompt,
+                           loras = loras,
                            negative_prompt = negative_prompt,
                            width = base_w, height = base_h,
                            sample_method = sample_method,
@@ -1298,13 +1349,14 @@ sd_highres_fix <- function(ctx,
 
   # Step 3: img2img refinement.
   # Tiled sampling (MultiDiffusion) only works for convolutional UNets. DiT
-  # denoisers (Flux, Flux.2, SD3) patchify the latent and do not preserve the
+  # denoisers (Flux, Flux.2, Flux.3, SD3) patchify the latent and do not preserve the
   # tile's spatial layout, so tiling the sampler produces garbage/black output.
   # For those, refine with direct img2img (VAE tiling still applies).
-  if (model_type %in% c("flux", "flux2", "sd3")) {
+  if (model_type %in% c("flux", "flux2", "flux3", "sd3")) {
     message(sprintf("[highres_fix] Step 3: img2img (DiT, no tiled sampling) (strength=%.2f, steps=%d)",
                     hr_strength, hr_steps))
     result <- sd_img2img(ctx, prompt,
+                         loras = loras,
                          init_image = upscaled,
                          negative_prompt = negative_prompt,
                          width = width,
@@ -1330,6 +1382,7 @@ sd_highres_fix <- function(ctx,
   message(sprintf("[highres_fix] Step 3: tiled img2img (strength=%.2f, steps=%d)",
                   hr_strength, hr_steps))
   result <- sd_img2img_tiled(ctx, prompt,
+                              loras = loras,
                               init_image = upscaled,
                               negative_prompt = negative_prompt,
                               width = width,
@@ -1355,7 +1408,7 @@ sd_highres_fix <- function(ctx,
 }
 
 #' Get native latent tile size for a model type
-#' @param model_type One of "sd1", "sd2", "sdxl", "flux", "flux2", "sd3"
+#' @param model_type One of "sd1", "sd2", "sdxl", "flux", "flux2", "flux3", "sd3"
 #' @return Integer tile size in latent pixels
 #' @keywords internal
 .native_latent_tile_size <- function(model_type) {
@@ -1365,6 +1418,7 @@ sd_highres_fix <- function(ctx,
     sdxl  = 128L,  # 128 * 8 = 1024px
     flux  = 128L,
     flux2 = 128L,
+    flux3 = 128L,
     sd3   = 128L,
     64L
   )
@@ -1402,8 +1456,12 @@ sd_highres_fix <- function(ctx,
 #'   (default \code{"auto"}: VRAM-aware, see \code{\link{sd_txt2img}}).
 #' @param vae_auto_threshold Pixel area fallback threshold for auto VAE tiling
 #'   when VRAM query is unavailable
-#' @param vae_tile_size Tile size for VAE tiling (default 64)
+#' @param vae_tile_size Tile size in image pixels for tiled VAE (default 512);
+#'   converted internally to latent cells with the model's VAE scale factor
+#'   (8 for SD/FLUX.1, 16 for FLUX.2/FLUX.3). Before sd2R 0.2.2 it was in latent
+#'   cells (default 64); values below 128 give a warning.
 #' @param vae_tile_overlap Overlap for VAE tiling (default 0.25)
+#' @param loras LoRA weights: named numeric vector \code{c(path_or_name = weight)}. Prompt tags \code{<lora:name:weight>} are also accepted. See \code{\link{sd_lora}}.
 #' @return SD image (list with width, height, channel, data)
 #' @export
 #' @examples
@@ -1430,8 +1488,9 @@ sd_txt2img_highres <- function(ctx,
                                 eta = 0.0,
                                 vae_mode = "auto",
                                 vae_auto_threshold = 1048576L,
-                                vae_tile_size = 64L,
-                                vae_tile_overlap = 0.25) {
+                                vae_tile_size = 512L,
+                                vae_tile_overlap = 0.25,
+                                loras = NULL) {
   width <- as.integer(width)
   height <- as.integer(height)
 
@@ -1446,6 +1505,7 @@ sd_txt2img_highres <- function(ctx,
   # If target fits in a single tile, just use sd_txt2img
   if (width <= tile_size && height <= tile_size) {
     return(sd_txt2img(ctx, prompt,
+                      loras = loras,
                       negative_prompt = negative_prompt,
                       width = width, height = height,
                       sample_method = sample_method,
@@ -1473,6 +1533,7 @@ sd_txt2img_highres <- function(ctx,
     patch_seed <- if (base_seed < 0L) -1L else base_seed + i - 1L
 
     patch_imgs <- sd_txt2img(ctx, prompt,
+                              loras = loras,
                               negative_prompt = negative_prompt,
                               width = tile_size, height = tile_size,
                               sample_method = sample_method,
@@ -1519,6 +1580,7 @@ sd_txt2img_highres <- function(ctx,
   # Optional harmonization pass
   if (!is.null(img2img_strength) && img2img_strength > 0) {
     harmonized <- sd_img2img(ctx, prompt,
+                              loras = loras,
                               init_image = result,
                               negative_prompt = negative_prompt,
                               width = width, height = height,
@@ -1588,7 +1650,7 @@ sd_txt2img_highres <- function(ctx,
 }
 
 #' Get native tile size for a model type
-#' @param model_type One of "sd1", "sd2", "sdxl", "flux", "flux2", "sd3"
+#' @param model_type One of "sd1", "sd2", "sdxl", "flux", "flux2", "flux3", "sd3"
 #' @return Integer tile size in pixels
 #' @keywords internal
 .native_tile_size <- function(model_type) {
@@ -1598,6 +1660,7 @@ sd_txt2img_highres <- function(ctx,
     sdxl  = 1024L,
     flux  = 1024L,
     flux2 = 1024L,
+    flux3 = 1024L,
     sd3   = 1024L,
     768L
   )

@@ -64,10 +64,11 @@
 
 #' Guess model type from filename
 #' @param filename File basename
-#' @return Character: "flux2", "flux", "sdxl", "sd1", "sd2", "sd3", or "unknown"
+#' @return Character: "flux3", "flux2", "flux", "sdxl", "sd1", "sd2", "sd3", or "unknown"
 #' @keywords internal
 .guess_model_type <- function(filename) {
   fn <- tolower(filename)
+  if (grepl("flux[._-]?3", fn)) return("flux3")
   if (grepl("flux[._-]?2|flux2", fn)) return("flux2")
   if (grepl("flux", fn)) return("flux")
   if (grepl("sdxl|_xl", fn)) return("sdxl")
@@ -121,6 +122,7 @@
   if (!nzchar(hay)) return(NULL)
 
   # Confident matches only; order matters (most specific first).
+  if (grepl("flux[._-]?3", hay))                return("flux3")
   if (grepl("flux[._-]?2|flux2", hay))           return("flux2")
   if (grepl("flux", hay))                        return("flux")
   if (grepl("sd3|stable[-_ ]?diffusion[-_ ]?3|mmdit", hay)) return("sd3")
@@ -148,6 +150,7 @@
   hay <- tolower(paste(c(j$model_type, j$architectures, j[["_class_name"]]),
                        collapse = " "))
   if (!nzchar(hay)) return(NULL)
+  if (grepl("flux[._-]?3", hay))         return("flux3")
   if (grepl("flux[._-]?2|flux2", hay))    return("flux2")
   if (grepl("flux", hay))                 return("flux")
   if (grepl("sd3|stablediffusion3|mmdit", hay)) return("sd3")
@@ -184,19 +187,21 @@
   if (is.null(detected)) {
     stop("Cannot detect model_type from '", basename(path), "'. ",
          "Set it explicitly, e.g. model_type = \"flux\" ",
-         "(one of: sd1, sd2, sdxl, flux, flux2, sd3).", call. = FALSE)
+         "(one of: sd1, sd2, sdxl, flux, flux2, flux3, sd3).", call. = FALSE)
   }
   detected
 }
 
 #' Guess component role from filename
 #' @param filename File basename
-#' @return Character: "diffusion", "vae", "clip_l", "clip_g", "t5xxl",
+#' @return Character: "diffusion", "vae", "llm", "clip_l", "clip_g", "t5xxl",
 #'   "taesd", or "unknown"
 #' @keywords internal
 .guess_component <- function(filename) {
   fn <- tolower(filename)
   if (grepl("^ae[._]|[._]ae[._]|vae|decoder", fn)) return("vae")
+  # LLM text encoder: Qwen3 / Qwen3-VL (FLUX.2 Klein / FLUX.3), Mistral-Small (FLUX.2)
+  if (grepl("qwen|mistral", fn)) return("llm")
   if (grepl("clip_l|clip-l|openclip-vit-l", fn)) return("clip_l")
   if (grepl("clip_g|clip-g|openclip-vit-g", fn)) return("clip_g")
   if (grepl("t5|umt5", fn)) return("t5xxl")
@@ -222,10 +227,10 @@
 #' \code{\link{sd_load_model}}.
 #'
 #' @param id Unique model identifier (e.g. "flux-dev", "sd15-base")
-#' @param model_type Model architecture: "sd1", "sd2", "sdxl", "flux", "flux2", "sd3"
+#' @param model_type Model architecture: "sd1", "sd2", "sdxl", "flux", "flux2", "flux3", "sd3"
 #' @param paths Named list of file paths. Recognized names:
 #'   \code{diffusion}, \code{model} (alias for diffusion), \code{vae},
-#'   \code{clip_l}, \code{clip_g}, \code{t5xxl}, \code{taesd},
+#'   \code{clip_l}, \code{clip_g}, \code{t5xxl}, \code{llm}, \code{taesd},
 #'   \code{control_net}.
 #' @param defaults Named list of generation defaults (optional). Recognized:
 #'   \code{steps}, \code{cfg_scale}, \code{scheduler}, \code{width},
@@ -253,7 +258,7 @@ sd_register_model <- function(id, model_type, paths, defaults = list(),
     stop("Package 'jsonlite' is required. Install with install.packages('jsonlite')",
          call. = FALSE)
   }
-  model_type <- match.arg(model_type, c("sd1", "sd2", "sdxl", "flux", "flux2", "sd3", "unknown"))
+  model_type <- match.arg(model_type, c("sd1", "sd2", "sdxl", "flux", "flux2", "flux3", "sd3", "unknown"))
 
   registry <- .read_registry()
   if (!overwrite && id %in% vapply(registry, `[[`, character(1), "id")) {
@@ -375,6 +380,7 @@ sd_load_model <- function(id, ...) {
     clip_l = "clip_l_path",
     clip_g = "clip_g_path",
     t5xxl = "t5xxl_path",
+    llm = "llm_path",
     taesd = "taesd_path",
     control_net = "control_net_path"
   )
@@ -544,6 +550,7 @@ sd_scan_models <- function(dir, overwrite = FALSE, recursive = FALSE) {
     support_files <- dir_files[dir_files$component %in%
                                  c("vae", "clip_l", "clip_g", "t5xxl", "taesd",
                                    "control_net"), , drop = FALSE]
+    llm_files <- dir_files$path[dir_files$component == "llm"]
 
     for (i in seq_len(nrow(diffusion_files))) {
       df <- diffusion_files[i, ]
@@ -555,6 +562,7 @@ sd_scan_models <- function(dir, overwrite = FALSE, recursive = FALSE) {
       # Attach only relevant support files based on model type
       relevant <- switch(model_type,
         flux = c("vae", "clip_l", "clip_g", "t5xxl", "taesd"),
+        flux2 = , flux3 = c("vae", "taesd"),
         sdxl = c("vae", "clip_l", "clip_g", "taesd"),
         c("vae", "clip_l", "taesd")  # sd1, sd2, unknown
       )
@@ -564,11 +572,18 @@ sd_scan_models <- function(dir, overwrite = FALSE, recursive = FALSE) {
           paths[[sf$component]] <- sf$path
         }
       }
+      if (model_type %in% c("flux2", "flux3")) {
+        paths$llm <- .pick_llm(llm_files, model_type)
+      }
 
       # Generate defaults based on model type
       defaults <- switch(model_type,
         flux = list(steps = 25L, cfg_scale = 1.0, width = 1024L, height = 1024L,
                     sample_method = "euler", scheduler = "discrete"),
+        flux2 = list(steps = 4L, cfg_scale = 1.0, width = 1024L, height = 1024L,
+                     sample_method = "euler"),
+        flux3 = list(steps = 16L, cfg_scale = 1.0, width = 1024L, height = 1024L,
+                     sample_method = "euler"),
         sdxl = list(steps = 25L, cfg_scale = 7.0, width = 1024L, height = 1024L,
                     sample_method = "euler_a", scheduler = "normal"),
         sd1 = list(steps = 20L, cfg_scale = 7.0, width = 512L, height = 512L,
@@ -603,6 +618,7 @@ sd_scan_models <- function(dir, overwrite = FALSE, recursive = FALSE) {
         # SD1/SD2 don't need t5xxl or clip_g
         relevant <- switch(model_type,
           flux = c("vae", "clip_l", "clip_g", "t5xxl", "taesd"),
+          flux2 = , flux3 = c("vae", "taesd"),
           sdxl = c("vae", "clip_l", "clip_g", "taesd"),
           c("vae", "clip_l", "taesd")  # sd1, sd2, unknown
         )
@@ -612,10 +628,17 @@ sd_scan_models <- function(dir, overwrite = FALSE, recursive = FALSE) {
             paths[[sf$component]] <- sf$path
           }
         }
+        if (model_type %in% c("flux2", "flux3")) {
+          paths$llm <- .pick_llm(llm_files, model_type)
+        }
 
         defaults <- switch(model_type,
           flux = list(steps = 25L, cfg_scale = 1.0, width = 1024L, height = 1024L,
                       sample_method = "euler", scheduler = "discrete"),
+          flux2 = list(steps = 4L, cfg_scale = 1.0, width = 1024L, height = 1024L,
+                       sample_method = "euler"),
+          flux3 = list(steps = 16L, cfg_scale = 1.0, width = 1024L, height = 1024L,
+                       sample_method = "euler"),
           sdxl = list(steps = 25L, cfg_scale = 7.0, width = 1024L, height = 1024L,
                       sample_method = "euler_a", scheduler = "normal"),
           sd1 = list(steps = 20L, cfg_scale = 7.0, width = 512L, height = 512L,
@@ -645,6 +668,22 @@ sd_scan_models <- function(dir, overwrite = FALSE, recursive = FALSE) {
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+#' Pick the LLM text encoder for FLUX.2 / FLUX.3
+#'
+#' FLUX.3 uses Qwen3-VL, FLUX.2 Klein uses plain Qwen3 (full FLUX.2: Mistral).
+#' Prefers a "vl" file for flux3 and a non-"vl" file for flux2; falls back to
+#' any candidate when no preferred one exists.
+#' @param files Candidate LLM file paths
+#' @param model_type "flux2" or "flux3"
+#' @return A single path, or NULL when there are no candidates
+#' @keywords internal
+.pick_llm <- function(files, model_type) {
+  if (length(files) == 0L) return(NULL)
+  is_vl <- grepl("(^|[^a-z])vl|qwen[0-9.]*vl", tolower(basename(files)))
+  pref <- if (identical(model_type, "flux3")) files[is_vl] else files[!is_vl]
+  if (length(pref)) pref[1L] else files[1L]
+}
 
 #' Find least recently used model id
 #' @keywords internal

@@ -1,7 +1,7 @@
 Package: sd2R
 Type: Package
 Title: Stable Diffusion Image Generation
-Version: 0.2.1.1
+Version: 0.2.2
 Authors@R: c(
     person("Yuri", "Baramykov",
         email = "lbsbmsu@mail.ru",
@@ -77,7 +77,7 @@ Depends: R (>= 4.1.0)
 Encoding: UTF-8
 Imports:
     Rcpp (>= 1.0.0),
-    ggmlR (>= 0.5.0),
+    ggmlR (>= 0.8.8),
     shiny,
     base64enc,
     jsonlite,

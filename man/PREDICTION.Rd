@@ -5,12 +5,13 @@
 \alias{PREDICTION}
 \title{Prediction types}
 \format{
-An object of class \code{list} of length 6.
+An object of class \code{list} of length 9.
 }
 \usage{
 PREDICTION
 }
 \description{
-Prediction types
+\code{FLUX2_FLOW_PRED} is kept as an alias of \code{FLUX_FLOW_PRED}: the
+core no longer has a separate FLUX.2 prediction type.
 }
 \keyword{datasets}

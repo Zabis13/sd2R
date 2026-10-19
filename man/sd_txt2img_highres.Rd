@@ -22,8 +22,9 @@ sd_txt2img_highres(
   eta = 0,
   vae_mode = "auto",
   vae_auto_threshold = 1048576L,
-  vae_tile_size = 64L,
-  vae_tile_overlap = 0.25
+  vae_tile_size = 512L,
+  vae_tile_overlap = 0.25,
+  loras = NULL
 )
 }
 \arguments{
@@ -70,9 +71,14 @@ Use -1 for random.}
 \item{vae_auto_threshold}{Pixel area fallback threshold for auto VAE tiling
 when VRAM query is unavailable}
 
-\item{vae_tile_size}{Tile size for VAE tiling (default 64)}
+\item{vae_tile_size}{Tile size in image pixels for tiled VAE (default 512);
+converted internally to latent cells with the model's VAE scale factor
+(8 for SD/FLUX.1, 16 for FLUX.2/FLUX.3). Before sd2R 0.2.2 it was in latent
+cells (default 64); values below 128 give a warning.}
 
 \item{vae_tile_overlap}{Overlap for VAE tiling (default 0.25)}
+
+\item{loras}{LoRA weights: named numeric vector \code{c(path_or_name = weight)}. Prompt tags \code{<lora:name:weight>} are also accepted. See \code{\link{sd_lora}}.}
 }
 \value{
 SD image (list with width, height, channel, data)

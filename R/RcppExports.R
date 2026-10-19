@@ -73,12 +73,60 @@ sd_create_context_result <- function() {
     .Call(`_sd2R_sd_create_context_result`)
 }
 
+sd_system_info_cpp <- function() {
+    .Call(`_sd2R_sd_system_info_cpp`)
+}
+
+sd_version_cpp <- function() {
+    .Call(`_sd2R_sd_version_cpp`)
+}
+
+sd_num_physical_cores_cpp <- function() {
+    .Call(`_sd2R_sd_num_physical_cores_cpp`)
+}
+
+sd_type_name_cpp <- function(type) {
+    .Call(`_sd2R_sd_type_name_cpp`, type)
+}
+
+sd_sample_method_name_cpp <- function(method) {
+    .Call(`_sd2R_sd_sample_method_name_cpp`, method)
+}
+
+sd_scheduler_name_cpp <- function(sched) {
+    .Call(`_sd2R_sd_scheduler_name_cpp`, sched)
+}
+
+sd_generate_image <- function(ctx_sexp, params) {
+    .Call(`_sd2R_sd_generate_image`, ctx_sexp, params)
+}
+
+sd_generate_async <- function(ctx_sexp, params) {
+    .Call(`_sd2R_sd_generate_async`, ctx_sexp, params)
+}
+
+sd_generate_poll <- function() {
+    .Call(`_sd2R_sd_generate_poll`)
+}
+
+sd_generate_result <- function() {
+    .Call(`_sd2R_sd_generate_result`)
+}
+
 sd_ctx_version_cpp <- function(ctx_sexp) {
     .Call(`_sd2R_sd_ctx_version_cpp`, ctx_sexp)
 }
 
 sd_ctx_supports_ref_cpp <- function(ctx_sexp) {
     .Call(`_sd2R_sd_ctx_supports_ref_cpp`, ctx_sexp)
+}
+
+sd_ctx_lora_apply_mode_cpp <- function(ctx_sexp) {
+    .Call(`_sd2R_sd_ctx_lora_apply_mode_cpp`, ctx_sexp)
+}
+
+sd_ctx_lora_stats_cpp <- function(ctx_sexp) {
+    .Call(`_sd2R_sd_ctx_lora_stats_cpp`, ctx_sexp)
 }
 
 sd_encode_text_cpp <- function(ctx_sexp, prompt, clip_skip, width, height) {
@@ -117,36 +165,12 @@ sd_inverse_noise_scale_cpp <- function(ctx_sexp, x_in, sigma_last) {
     .Call(`_sd2R_sd_inverse_noise_scale_cpp`, ctx_sexp, x_in, sigma_last)
 }
 
-sd_denoise_step_cpp <- function(ctx_sexp, x_in, sigma, cond, uncond, cfg_scale, step, total_steps) {
-    .Call(`_sd2R_sd_denoise_step_cpp`, ctx_sexp, x_in, sigma, cond, uncond, cfg_scale, step, total_steps)
+sd_denoise_step_cpp <- function(ctx_sexp, x_in, sigma, cond, uncond, cfg_scale, step, total_steps, sigma_next) {
+    .Call(`_sd2R_sd_denoise_step_cpp`, ctx_sexp, x_in, sigma, cond, uncond, cfg_scale, step, total_steps, sigma_next)
 }
 
-sd_generate_image <- function(ctx_sexp, params) {
-    .Call(`_sd2R_sd_generate_image`, ctx_sexp, params)
-}
-
-sd_system_info_cpp <- function() {
-    .Call(`_sd2R_sd_system_info_cpp`)
-}
-
-sd_version_cpp <- function() {
-    .Call(`_sd2R_sd_version_cpp`)
-}
-
-sd_num_physical_cores_cpp <- function() {
-    .Call(`_sd2R_sd_num_physical_cores_cpp`)
-}
-
-sd_type_name_cpp <- function(type) {
-    .Call(`_sd2R_sd_type_name_cpp`, type)
-}
-
-sd_sample_method_name_cpp <- function(method) {
-    .Call(`_sd2R_sd_sample_method_name_cpp`, method)
-}
-
-sd_scheduler_name_cpp <- function(sched) {
-    .Call(`_sd2R_sd_scheduler_name_cpp`, sched)
+sd_euler_step_cpp <- function(x_in, den_in, sigma, sigma_next) {
+    .Call(`_sd2R_sd_euler_step_cpp`, x_in, den_in, sigma, sigma_next)
 }
 
 sd_create_upscaler <- function(esrgan_path, n_threads = 0L, offload_params_to_cpu = FALSE, direct = FALSE, tile_size = 0L) {
@@ -159,17 +183,5 @@ sd_upscale <- function(upscaler_sexp, image, upscale_factor) {
 
 sd_convert_model <- function(input_path, output_path, output_type, vae_path = "", tensor_type_rules = "", convert_name = FALSE) {
     .Call(`_sd2R_sd_convert_model`, input_path, output_path, output_type, vae_path, tensor_type_rules, convert_name)
-}
-
-sd_generate_async <- function(ctx_sexp, params) {
-    .Call(`_sd2R_sd_generate_async`, ctx_sexp, params)
-}
-
-sd_generate_poll <- function() {
-    .Call(`_sd2R_sd_generate_poll`)
-}
-
-sd_generate_result <- function() {
-    .Call(`_sd2R_sd_generate_result`)
 }
 

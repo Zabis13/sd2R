@@ -2,7 +2,7 @@ library(sd2R)
 
 cat("=== Highres Fix Test ===\n\n")
 
-model_path <- "/mnt/Data2/DS_projects/sd_models/v1-5-pruned-emaonly.safetensors"
+model_path <- "/mnt/Data3/DS_Data/sd_models/v1-5-pruned-emaonly.safetensors"
 
 cat("--- Loading SD 1.5 ---\n")
 ctx <- sd_ctx(model_path, n_threads = 4L, model_type = "sd1", vae_decode_only = FALSE)

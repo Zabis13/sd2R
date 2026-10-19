@@ -61,7 +61,8 @@ An sd_tensor — the denoised latent x_0.
 Equivalent to \code{\link{sd_sample}} for the Euler / Euler-a samplers, but
 runs the loop in R so a callback can observe or interrupt each step (e.g.
 live preview). For Euler (no ancestral noise) the result is bit-for-bit equal
-to \code{sd_sample}; Euler-a differs (R RNG vs ggml RNG for the ancestral
+to \code{sd_sample} (the update runs in float via \code{\link{sd_euler_step}});
+Euler-a differs (R RNG vs ggml RNG for the ancestral
 term). Other samplers are not supported here — use \code{\link{sd_sample}}.
 }
 \seealso{

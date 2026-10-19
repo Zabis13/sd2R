@@ -4,7 +4,7 @@ library(sd2R)
 # Mask semantics: white (255) = generate, black (0) = keep original.
 # Works on any model (the mask drives the denoise schedule); on FLUX 1/2 too.
 
-model_path <- "/mnt/Data2/DS_projects/sd_models/v1-5-pruned-emaonly.safetensors"
+model_path <- "/mnt/Data3/DS_Data/sd_models/v1-5-pruned-emaonly.safetensors"
 ctx <- sd_ctx(model_path, n_threads = 4L, model_type = "sd1", vae_decode_only = FALSE)
 
 W <- 512L

@@ -10,84 +10,92 @@ OPENMP_CPPFLAGS = @OPENMP_CPPFLAGS@
 OPENMP_CFLAGS = @OPENMP_CFLAGS@
 OPENMP_CXXFLAGS = @OPENMP_CXXFLAGS@
 
-PKG_CPPFLAGS = -Isd -Isd/thirdparty -Isd/tokenizers -Isd/tokenizers/vocab \
+PKG_CPPFLAGS = -Isd -Isd/core -Isd/thirdparty -Isd/tokenizers -Isd/tokenizers/vocab \
   -DGGML_USE_CPU -D_GNU_SOURCE \
-  -DGGML_MAX_NAME=128 \
   -DGGML_R_PACKAGE \
+  -DSD_USE_UPSTREAM_GGML \
   $(OPENMP_CPPFLAGS) $(VULKAN_CPPFLAGS) $(META_CPPFLAGS)
 
 PKG_CXXFLAGS = $(OPENMP_CXXFLAGS)
 PKG_CFLAGS = $(OPENMP_CFLAGS)
 PKG_LIBS = -L$(GGMLR_LIB) -lggml $(OPENMP_CXXFLAGS) $(VULKAN_LIBS) -lpthread -lm
 
-SD_OBJECTS = \
-  sd/stable-diffusion.o \
-  sd/model.o \
+SD_CXX_OBJECTS = \
+  sd/conditioning/wan_audio.o \
+  sd/convert.o \
+  sd/core/backend_fit.o \
+  sd/core/compute_workspace.o \
+  sd/core/ggml_extend_backend.o \
+  sd/core/ggml_extend.o \
+  sd/core/ggml_graph_cut.o \
+  sd/core/ggml_runner.o \
+  sd/core/ggml_tensor_utils.o \
+  sd/core/layer_split_partition.o \
+  sd/core/parallel.o \
+  sd/core/probe/backend_probe.o \
+  sd/core/probe/conv_direct.o \
+  sd/core/probe/flash_attn.o \
+  sd/core/regex.o \
+  sd/core/runner_cache.o \
+  sd/core/segment_graph_bindings.o \
+  sd/core/segment_weight_pipeline.o \
+  sd/core/util.o \
+  sd/detailer.o \
+  sd/extensions/photomaker_extension.o \
+  sd/extensions/pulid_extension.o \
+  sd/model/adapter/lora_ops.o \
   sd/model_io/gguf_io.o \
   sd/model_io/pickle_io.o \
   sd/model_io/safetensors_io.o \
   sd/model_io/torch_legacy_io.o \
   sd/model_io/torch_zip_io.o \
+  sd/model_loader_files.o \
+  sd/model_loader.o \
+  sd/model_manager_files.o \
+  sd/model_manager.o \
+  sd/model_manager_prefetch.o \
   sd/name_conversion.o \
+  sd/pipeline/diffusion_engine.o \
+  sd/pipeline/image.o \
+  sd/pipeline/model_builders.o \
+  sd/pipeline/request.o \
+  sd/pipeline/video.o \
+  sd/runtime/audio_processing.o \
+  sd/runtime/guidance.o \
+  sd/runtime/image_preprocess.o \
+  sd/runtime/imatrix.o \
+  sd/runtime/sample-cache.o \
+  sd/runtime/tiling.o \
+  sd/stable-diffusion.o \
   sd/tokenizers/bpe_tokenizer.o \
   sd/tokenizers/clip_tokenizer.o \
   sd/tokenizers/gemma_tokenizer.o \
-  sd/tokenizers/gpt_oss_tokenizer.o \
   sd/tokenizers/mistral_tokenizer.o \
   sd/tokenizers/qwen2_tokenizer.o \
+  sd/tokenizers/sensenova_u1_tokenizer.o \
   sd/tokenizers/t5_unigram_tokenizer.o \
+  sd/tokenizers/tokenizer_config.o \
   sd/tokenizers/tokenizer.o \
   sd/tokenizers/tokenize_util.o \
   sd/tokenizers/vocab/vocab.o \
   sd/upscaler.o \
-  sd/util.o \
-  sd/version.o \
-  sd/ggml_extend_backend.o \
-  sd/ggml_graph_cut.o \
-  sd/layer_registry.o \
-  sd/guidance.o \
-  sd/sample-cache.o \
-  sd/convert.o \
-  sd/thirdparty/zip.o
+  sd/version.o
 
-R_INTERFACE_OBJECTS = RcppExports.o sd2R_interface.o
+SD_OBJECTS = $(SD_CXX_OBJECTS) sd/thirdparty/zip.o
+
+R_INTERFACE_OBJECTS = RcppExports.o sd2r_callbacks.o sd2r_params.o sd2r_ctx.o \
+  sd2r_generate.o sd2r_lowlevel_bridge.o sd2r_upscale.o
 
 OBJECTS = $(R_INTERFACE_OBJECTS) $(SD_OBJECTS)
 
-# Force-include r_ggml_compat.h only for sd/ objects (not Rcpp files).
+# Force-include r_ggml_compat.h only for sd/ C++ objects (not Rcpp files).
 # Rcpp files use R API directly and don't need stdio redirections.
 # Use bare filename (not full path) so paths with spaces don't break -include.
 # The header is found via the -I path that R adds automatically from
 # LinkingTo: ggmlR.
-SD_COMPAT_FLAGS = -include r_ggml_compat.h
-
-sd/stable-diffusion.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/model.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/model_io/gguf_io.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/model_io/pickle_io.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/model_io/safetensors_io.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/model_io/torch_legacy_io.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/model_io/torch_zip_io.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/name_conversion.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/tokenizers/bpe_tokenizer.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/tokenizers/clip_tokenizer.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/tokenizers/gemma_tokenizer.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/tokenizers/gpt_oss_tokenizer.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/tokenizers/mistral_tokenizer.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/tokenizers/qwen2_tokenizer.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/tokenizers/t5_unigram_tokenizer.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/tokenizers/tokenizer.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/tokenizers/tokenize_util.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/tokenizers/vocab/vocab.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/upscaler.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/util.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/version.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS) -DSDCPP_BUILD_VERSION=master_2026_06_03
-sd/ggml_extend_backend.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/ggml_graph_cut.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/layer_registry.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/guidance.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/sample-cache.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
-sd/convert.o: PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
 # zip.c is third-party C code that doesn't use printf/abort — skip compat header
 # to avoid macro conflicts with system headers (e.g. msxml.h on Windows).
+SD_COMPAT_FLAGS = -include r_ggml_compat.h
 
+$(SD_CXX_OBJECTS): PKG_CPPFLAGS += $(SD_COMPAT_FLAGS)
+sd/version.o: PKG_CPPFLAGS += -DSDCPP_BUILD_VERSION=master_2026_10_17

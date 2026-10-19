@@ -48,6 +48,14 @@ MODEL_PRESETS <- list(
     max_chars = 2000,
     resolutions = c("512x512", "768x768", "1024x1024")
   ),
+  flux3 = list(
+    label = "FLUX.3 (Klein)",
+    width = 1024L, height = 1024L,
+    steps = 16L, cfg = 1.0,
+    sampler = "EULER", scheduler = "SIMPLE",
+    max_chars = 2000,
+    resolutions = c("512x512", "768x768", "1024x1024")
+  ),
   sd3 = list(
     label = "SD 3",
     width = 1024L, height = 1024L,
@@ -111,7 +119,8 @@ auto_assign_roles <- function(dir_path, arch_override = NULL) {
   assigned <- rep(FALSE, length(files))
 
   # Step 1: detect architecture from filenames.
-  # flux2 must be checked before flux (flux2 filenames also contain "flux").
+  # flux3/flux2 must be checked before flux (their filenames also contain "flux").
+  has_flux3 <- any(grepl("flux[._-]?3", fl))
   has_flux2 <- any(grepl("flux[._-]?2|flux2", fl))
   has_flux  <- any(grepl("flux", fl))
   has_sd3   <- any(grepl("sd3", fl))
@@ -121,6 +130,8 @@ auto_assign_roles <- function(dir_path, arch_override = NULL) {
   if (!is.null(arch_override)) {
     # User picked the architecture explicitly — honour it and match files to it.
     roles$arch <- arch_override
+  } else if (has_flux3) {
+    roles$arch <- "flux3"
   } else if (has_flux2) {
     roles$arch <- "flux2"
   } else if (has_flux) {
@@ -135,23 +146,29 @@ auto_assign_roles <- function(dir_path, arch_override = NULL) {
     roles$arch <- "sd1"
   }
 
-  is_multipart <- roles$arch %in% c("flux", "flux2", "sd3")
+  is_multipart <- roles$arch %in% c("flux", "flux2", "flux3", "sd3")
 
   # Step 2: assign auxiliary roles (VAE, CLIP, T5)
 
   # VAE: "vae" or standalone "ae" in name. SD1/SD2/SDXL bundle the VAE inside the
   # checkpoint, so they need no external file. flux and flux2 use different VAEs
   # (e.g. ae.safetensors vs flux2-vae.safetensors) that must not be swapped.
+  # FLUX.3 uses the FLUX.2 VAE.
   vae_idx <- grep("(^|[^a-z])(vae|\\bae\\b)", fl)
   if (roles$arch %in% c("sd1", "sd2", "sdxl")) {
     vae_idx <- integer(0)
   } else if (identical(roles$arch, "flux")) {
-    # FLUX.1 VAE must not be a flux2 VAE.
-    vae_idx <- setdiff(vae_idx, grep("flux[._-]?2|flux2", fl))
+    # FLUX.1 VAE must not be a flux2/flux3 VAE.
+    vae_idx <- setdiff(vae_idx, grep("flux[._-]?[23]", fl))
   } else if (identical(roles$arch, "flux2")) {
     # Prefer an explicit flux2 VAE; fall back to any VAE only if none is named.
     f2 <- intersect(vae_idx, grep("flux[._-]?2|flux2", fl))
     if (length(f2)) vae_idx <- f2
+  } else if (identical(roles$arch, "flux3")) {
+    # Prefer a flux3-named VAE, then a flux2 one, then any VAE.
+    f3 <- intersect(vae_idx, grep("flux[._-]?3", fl))
+    f2 <- intersect(vae_idx, grep("flux[._-]?2|flux2", fl))
+    if (length(f3)) vae_idx <- f3 else if (length(f2)) vae_idx <- f2
   }
   if (length(vae_idx)) {
     pick <- vae_idx[which.max(sizes[vae_idx])]
@@ -187,11 +204,15 @@ auto_assign_roles <- function(dir_path, arch_override = NULL) {
     }
   }
 
-  # LLM text encoder: Qwen3 (FLUX.2 Klein) / Mistral-Small (full FLUX.2) — only
-  # relevant to FLUX.2.
-  if (identical(roles$arch, "flux2")) {
+  # LLM text encoder: Qwen3 (FLUX.2 Klein) / Mistral-Small (full FLUX.2) /
+  # Qwen3-VL (FLUX.3) — only relevant to FLUX.2 / FLUX.3. FLUX.3 prefers a "vl"
+  # file, FLUX.2 a non-"vl" one; otherwise any candidate.
+  if (roles$arch %in% c("flux2", "flux3")) {
     idx <- grep("qwen|mistral", fl)
     idx <- setdiff(idx, which(assigned))
+    is_vl <- grepl("(^|[^a-z])vl|qwen[0-9.]*vl", fl[idx])
+    pref <- if (identical(roles$arch, "flux3")) idx[is_vl] else idx[!is_vl]
+    if (length(pref)) idx <- pref
     if (length(idx)) {
       pick <- idx[which.max(sizes[idx])]
       roles$llm <- files[pick]
@@ -204,15 +225,19 @@ auto_assign_roles <- function(dir_path, arch_override = NULL) {
   if (is_multipart) {
     is_flux_file  <- grepl("flux", fl)
     is_flux2_file <- grepl("flux[._-]?2|flux2", fl)
+    is_flux3_file <- grepl("flux[._-]?3", fl)
     is_sd3_file   <- grepl("sd3", fl)
     is_generic    <- grepl("dit|unet", fl)  # arch-neutral diffusion naming
 
     if (identical(roles$arch, "flux")) {
-      # FLUX.1: flux-named files, excluding flux2.
-      cand <- which(is_flux_file & !is_flux2_file)
+      # FLUX.1: flux-named files, excluding flux2/flux3.
+      cand <- which(is_flux_file & !is_flux2_file & !is_flux3_file)
     } else if (identical(roles$arch, "flux2")) {
       # FLUX.2: requires an actual flux2 file; never fall back to FLUX.1.
       cand <- which(is_flux2_file)
+    } else if (identical(roles$arch, "flux3")) {
+      # FLUX.3: requires an actual flux3 file.
+      cand <- which(is_flux3_file)
     } else {  # sd3
       cand <- which(is_sd3_file | is_generic)
     }
@@ -244,7 +269,7 @@ auto_assign_roles <- function(dir_path, arch_override = NULL) {
 }
 
 # Read initial model_dir from option set by sd_app()
-init_model_dir <- getOption("sd2R.model_dir", default = "/mnt/Data2/DS_projects/sd_models")
+init_model_dir <- getOption("sd2R.model_dir", default = "/mnt/Data3/DS_Data/sd_models")
 
 # ---------- UI ----------
 ui <- fluidPage(
@@ -344,19 +369,19 @@ ui <- fluidPage(
 
       # Auto-assigned dropdowns — visibility depends on architecture
       conditionalPanel(
-        condition = "input.model_type != 'flux' && input.model_type != 'flux2' && input.model_type != 'sd3'",
+        condition = "input.model_type != 'flux' && input.model_type != 'flux2' && input.model_type != 'flux3' && input.model_type != 'sd3'",
         selectInput("sel_model", "Model", choices = NULL)
       ),
       conditionalPanel(
-        condition = "input.model_type == 'flux' || input.model_type == 'flux2' || input.model_type == 'sd3'",
+        condition = "input.model_type == 'flux' || input.model_type == 'flux2' || input.model_type == 'flux3' || input.model_type == 'sd3'",
         selectInput("sel_diffusion", "Diffusion model", choices = NULL),
         selectInput("sel_clip_l", "CLIP-L (optional)", choices = NULL),
         selectInput("sel_t5xxl", "T5-XXL (optional)", choices = NULL)
       ),
-      # LLM text encoder — FLUX.2 only (Qwen3 / Mistral-Small)
+      # LLM text encoder — FLUX.2 (Qwen3 / Mistral-Small) / FLUX.3 (Qwen3-VL)
       conditionalPanel(
-        condition = "input.model_type == 'flux2'",
-        selectInput("sel_llm", "LLM encoder (Qwen3/Mistral)", choices = NULL)
+        condition = "input.model_type == 'flux2' || input.model_type == 'flux3'",
+        selectInput("sel_llm", "LLM encoder (Qwen3/Qwen3-VL/Mistral)", choices = NULL)
       ),
       selectInput("sel_vae", "VAE (optional)", choices = NULL),
 
@@ -495,7 +520,7 @@ server <- function(input, output, session) {
 
     # Warn if the primary file for the chosen architecture is missing, instead
     # of silently leaving a (none) the user might not notice.
-    if (roles$arch %in% c("flux", "flux2", "sd3")) {
+    if (roles$arch %in% c("flux", "flux2", "flux3", "sd3")) {
       primary_ok <- nzchar(roles$diffusion)
       primary_lbl <- "diffusion model"
     } else {
@@ -551,15 +576,15 @@ server <- function(input, output, session) {
 
     # Clear stale role selections from the other branch to avoid sending
     # incompatible path combinations to sd.cpp
-    if (input$model_type %in% c("flux", "flux2", "sd3")) {
+    if (input$model_type %in% c("flux", "flux2", "flux3", "sd3")) {
       updateSelectInput(session, "sel_model", selected = "")
     } else {
       updateSelectInput(session, "sel_diffusion", selected = "")
       updateSelectInput(session, "sel_clip_l",    selected = "")
       updateSelectInput(session, "sel_t5xxl",     selected = "")
     }
-    # LLM encoder applies to flux2 only
-    if (!identical(input$model_type, "flux2")) {
+    # LLM encoder applies to flux2 / flux3 only
+    if (!input$model_type %in% c("flux2", "flux3")) {
       updateSelectInput(session, "sel_llm", selected = "")
     }
   })

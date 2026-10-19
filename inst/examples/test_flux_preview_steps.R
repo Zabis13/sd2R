@@ -8,7 +8,7 @@
 
 library(sd2R)
 
-models_dir <- "/mnt/Data2/DS_projects/sd_models"
+models_dir <- "/mnt/Data3/DS_Data/sd_models"
 PREFIX <- "/tmp/flux_step_"
 
 # Wire the preview callback BEFORE generation. PROJ = fast linear latent->RGB

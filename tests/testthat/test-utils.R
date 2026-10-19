@@ -20,9 +20,10 @@ test_that("constants are defined and 0-based", {
 })
 
 test_that("constants have correct count", {
-  expect_equal(length(SAMPLE_METHOD), 18)
-  expect_equal(length(SCHEDULER), 12)
-  expect_equal(length(PREDICTION), 6)
+  expect_equal(length(SAMPLE_METHOD), 21)
+  expect_equal(length(SCHEDULER), 17)
+  # FLUX2_FLOW_PRED is an alias of FLUX_FLOW_PRED, so count distinct values
+  expect_equal(length(unique(unlist(PREDICTION))), 8)
   expect_equal(length(RNG_TYPE), 3)
 })
 
@@ -62,7 +63,7 @@ test_that("sd_txt2img accepts vae_mode parameters", {
   expect_true("vae_tiling" %in% names(args))  # deprecated but present
   expect_equal(eval(args$vae_mode), "auto")
   expect_equal(eval(args$vae_auto_threshold), 1048576L)
-  expect_equal(eval(args$vae_tile_size), 64L)
+  expect_equal(eval(args$vae_tile_size), 512L)
   expect_equal(eval(args$vae_tile_overlap), 0.25)
   expect_null(eval(args$vae_tile_rel_x))
   expect_null(eval(args$vae_tile_rel_y))
@@ -80,7 +81,7 @@ test_that("sd_img2img accepts vae_mode parameters", {
   expect_true("vae_tiling" %in% names(args))  # deprecated but present
   expect_equal(eval(args$vae_mode), "auto")
   expect_equal(eval(args$vae_auto_threshold), 1048576L)
-  expect_equal(eval(args$vae_tile_size), 64L)
+  expect_equal(eval(args$vae_tile_size), 512L)
   expect_equal(eval(args$vae_tile_overlap), 0.25)
   expect_null(eval(args$vae_tile_rel_x))
   expect_null(eval(args$vae_tile_rel_y))

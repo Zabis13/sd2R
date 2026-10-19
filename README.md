@@ -6,7 +6,7 @@
 
 ## Overview
 
-sd2R exposes a high-level R interface for text-to-image and image-to-image generation, while all heavy computation (tokenization, encoders, denoiser, sampler, VAE, model loading) is implemented in C++. Supports SD 1.x, SD 2.x, SDXL, Flux, and FLUX.2 (Klein) model families. Targets local inference on Linux with Vulkan-enabled AMD GPUs (with automatic CPU fallback via ggml), without relying on external Python or web APIs.
+sd2R exposes a high-level R interface for text-to-image and image-to-image generation, while all heavy computation (tokenization, encoders, denoiser, sampler, VAE, model loading) is implemented in C++. Supports SD 1.x, SD 2.x, SDXL, Flux, FLUX.2 (Klein), and FLUX.3 (Image Klein) model families. Targets local inference on Linux with Vulkan-enabled AMD GPUs (with automatic CPU fallback via ggml), without relying on external Python or web APIs.
 
 ## Architecture
 
@@ -16,7 +16,7 @@ Flux without Python:
 R  →  sd2R  →  ggmlR  →  Vulkan  →  GPU
 ```
 
-- **C++ core** (`src/sd/`): tokenizers, text encoders (CLIP, Mistral, Qwen, UMT5), diffusion UNet/MMDiT denoiser, samplers, VAE encoder/decoder, and model loading for `.safetensors` and `.gguf` weights.
+- **C++ core** (`src/sd/`, stable-diffusion.cpp master 2026-10): tokenizers, text encoders (CLIP, Mistral, Qwen, UMT5), diffusion UNet/MMDiT denoiser, samplers, VAE encoder/decoder, and model loading for `.safetensors` and `.gguf` weights. Weights are loaded in `sd_ctx()` by default; `eager_load = FALSE` defers loading to first use.
 - **R layer**: user-facing pipeline functions, parameter validation, image helpers, testing, and documentation-friendly API.
 - **Backend**: links against ggmlR (headers via `LinkingTo`) and `libggml.a`, reusing the same GGML/Vulkan stack that also powers llamaR and other ggmlR-based packages.
 
@@ -29,7 +29,7 @@ R  →  sd2R  →  ggmlR  →  Vulkan  →  GPU
 - **Multi-GPU model parallelism**: `device_layout` parameter in `sd_ctx()` distributes sub-models across multiple Vulkan GPUs within a single process. Presets: `"mono"` (all on one GPU), `"split_encoders"` (CLIP/T5 on GPU 1, diffusion + VAE on GPU 0), `"split_vae"` (CLIP/T5 + VAE on GPU 1, diffusion on GPU 0), `"encoders_cpu"` (text encoders on CPU). Manual override via `diffusion_gpu`, `clip_gpu`, `vae_gpu`.
 - **Multi-GPU tensor split**: `meta_backend = TRUE` in `sd_ctx()` shards a single diffusion model across all available GPUs via the ggml meta backend (for models too large for one GPU). Requires ggmlR >= 0.7.8; falls back to the normal single-backend path otherwise.
 - **Profiling**: built-in per-stage timing via `sd_profile_start()` / `sd_profile_stop()` / `sd_profile_summary()`. Tracks model loading, text encoding (with CLIP/T5 breakdown), sampling, and VAE decode/encode stages.
-- **Text-to-image** generation supporting Stable Diffusion 1.x, 2.x, SDXL, Flux, and FLUX.2 (Klein) models with typical generations taking a few seconds on Vulkan-enabled GPUs.
+- **Text-to-image** generation supporting Stable Diffusion 1.x, 2.x, SDXL, Flux, FLUX.2 (Klein), and FLUX.3 (Image Klein) models with typical generations taking a few seconds on Vulkan-enabled GPUs.
 - **Image-to-image** workflows with noise strength control and reuse of the same denoising pipeline as text-to-image. Requires `vae_decode_only = FALSE` in context.
 - **Inpainting**: the `mask` argument of `sd_img2img()` regenerates only the masked region while preserving the rest. Accepts a PNG path, a numeric matrix, or an SD image (white = generate, black = keep); `sd_load_mask()` loads a mask file. Works on plain SD/SDXL/FLUX 1/2 weights — no dedicated inpaint model required.
 - **Optional upscaling** using a dedicated upscaler context managed entirely in C++ and exposed to R through external pointers.
@@ -39,7 +39,7 @@ R  →  sd2R  →  ggmlR  →  Vulkan  →  GPU
 - **Image utilities** in R: saving generated images to PNG, converting between internal tensors and R raw vectors, and simple inspection of output tensors.
 - **System introspection** via `sd_system_info()`, reporting GGML/Vulkan capabilities as detected by ggmlR at build time.
 - **Pipeline graph API**: `sd_pipeline()` + `sd_node()` for composable, sequential multi-step workflows (txt2img → upscale → img2img → save). Pipelines are serializable to JSON via `sd_save_pipeline()` / `sd_load_pipeline()`.
-- **Shiny GUI**: `sd_app()` launches an interactive web interface with auto-detection of model architecture, non-blocking async generation (C++ `std::thread`), live progress bar with ETA, and automatic role assignment for multi-file models (Flux, FLUX.2, SD3).
+- **Shiny GUI**: `sd_app()` launches an interactive web interface with auto-detection of model architecture, non-blocking async generation (C++ `std::thread`), live progress bar with ETA, and automatic role assignment for multi-file models (Flux, FLUX.2, FLUX.3, SD3).
 
 ## Shiny GUI
 
@@ -66,9 +66,9 @@ Rscript -e "shiny::runApp(system.file('shiny/sd2R_app', package = 'sd2R'), port 
 ```
 
 Features:
-- Auto-detects model architecture (Flux, FLUX.2, SD3, SDXL, SD1/2) and assigns component roles (diffusion, VAE, CLIP, T5)
+- Auto-detects model architecture (Flux, FLUX.2, FLUX.3, SD3, SDXL, SD1/2) and assigns component roles (diffusion, VAE, CLIP, T5, LLM encoder)
 - Non-blocking generation with live progress bar and ETA
-- Shares `sd_generate()`'s auto-routing: guidance-distilled CFG (Flux/FLUX.2), VRAM-aware VAE tiling, and multi-step highres-fix all run through the async engine
+- Shares `sd_generate()`'s auto-routing: guidance-distilled CFG (Flux/FLUX.2/FLUX.3), VRAM-aware VAE tiling, and multi-step highres-fix all run through the async engine
 - Prevents incompatible model combinations
 
 ## Pipeline Example
@@ -104,9 +104,33 @@ sd_app(model_dir = "models/flux2")
 
 That's it — the app auto-detects the model and you can start generating. Re-running `sd_download_model()` is safe: it skips the download if the folder is already populated.
 
+## FLUX.3 Image Klein
+
+FLUX.3 has its own DiT, uses the FLUX.2 VAE and a Qwen3-VL 4B LLM text encoder (not the plain Qwen3-4B of FLUX.2 Klein). Defaults: 16 steps, `cfg_scale = 1.0`, Euler.
+
+```r
+ctx <- sd_ctx(
+  diffusion_model_path = "models/flux3_image_klein_sd_Q8_0.gguf",
+  vae_path             = "models/flux2-vae.safetensors",
+  llm_path             = "models/Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+  model_type           = "flux3"
+)
+img <- sd_generate(ctx, "a cat sitting on a chair, oil painting",
+                   width = 768L, height = 768L)
+
+# Edit with up to 10 reference images
+edit <- sd_generate_multiref(ctx, "turn the cat into a dog",
+                             refs = list(img[[1]]), width = 768L, height = 768L)
+```
+
+- **Model manager / GUI**: `sd_scan_models()` and `sd_app()` detect FLUX.3 and attach the LLM encoder (a file with "vl" in its name for FLUX.3, a plain Qwen3 file for FLUX.2).
+- **Step-wise API**: flow-map (distilled Klein) checkpoints need the next sigma as target timestep — `sd_denoise_step(..., sigma_next = )`. `sd_euler_step()` does the Euler update in C++ (float), so `sd_sample_stepwise()` matches `sd_sample()` bit for bit.
+
+**VAE tile size** (`vae_tile_size`) is given in image pixels since 0.2.2 (default 512) and converted internally with the model's VAE scale factor (8 for SD/FLUX.1, 16 for FLUX.2/FLUX.3). Older code that passed latent cells (e.g. 64) gets a warning.
+
 ## Implementation Details
 
-- **Rcpp bindings**: `src/sd2R_interface.cpp` defines a thin bridge between R and the C API in `stable-diffusion.h`, returning `XPtr` objects with custom finalizers for correct lifetime management of `sd_ctx_t` and `upscaler_ctx_t`.
+- **Rcpp bindings**: `src/sd2r_*.cpp` (callbacks, parameters, context, generation, step-wise API, upscaler) define a thin bridge between R and the C API in `stable-diffusion.h`, returning `XPtr` objects with custom finalizers for correct lifetime management of `sd_ctx_t` and `upscaler_ctx_t`.
 - **Build system**: `configure` / `configure.win` generate `Makevars` from `.in` templates, resolving ggmlR paths, OpenMP, and Vulkan at configure time. Per-target `-include r_ggml_compat.h` applied only to `sd/*.cpp` sources to avoid macro conflicts with system headers.
 - **Package metadata**: `DESCRIPTION` declares Rcpp and ggmlR in `LinkingTo`, and `NAMESPACE` is generated via roxygen2 with `useDynLib` and Rcpp imports.
 - **On load**: `.onLoad()` initializes logging and registers constant values that mirror the underlying C++ enums using 0-based indices.
@@ -123,7 +147,7 @@ That's it — the app auto-detects the model and you can start generating. Re-ru
 ### Linux
 
 ```r
-# Install ggmlR first (if not already installed)
+# Install ggmlR first (sd2R >= 0.2.2 needs ggmlR >= 0.8.8)
 install.packages("ggmlR", configure.args = "--with-simd")
 
 # Install sd2R
@@ -273,13 +297,27 @@ Qwen3 LLM text encoder + FLUX.2 VAE. `sample_steps = 4`.
 
 RTX 3090 system: CPU Xeon E5-2666 v3, 32 GB RAM (Windows).
 
-| Test | AMD RX 9070 (16 GB) | RTX 3090 (24 GB) |
+| Test | AMD RX 9070 (16 GB) | RTX 3090 (24 GB) (old) |
 |---|---|---|
-| 1. 768x768 direct | 13.58 s | 5.10 s |
-| 2. 1024x1024 tiled VAE | 32.51 s | 8.59 s |
-| 3. 2048x1024 highres fix | 45.01 s | 23.54 s |
-| 4. img2img 768x768 direct | 8.08 s | 4.34 s |
-| 5. 1024x1024 direct | 33.31 s | 8.74 s |
+| 1. 768x768 direct | 3.80 s | 5.10 s |
+| 2. 1024x1024 tiled VAE | 6.70 s | 8.59 s |
+| 3. 2048x1024 highres fix | 13.99 s | 23.54 s |
+| 4. img2img 768x768 direct | 2.92 s | 4.34 s |
+| 5. 1024x1024 direct | 6.76 s | 8.74 s |
+
+### FLUX.3 Image Klein Q8_0 — 16 steps
+
+Qwen3-VL 4B (Q4_K_M) LLM text encoder + FLUX.2 VAE. `sample_steps = 16`, Euler.
+Tiled VAE uses 512 px tiles.
+
+| Test | AMD RX 9070 (16 GB) |
+|---|---|
+| 1. 768x768 direct | 11.35 s |
+| 2. 1024x1024 tiled VAE | 23.70 s |
+| 3. 2048x1024 highres fix | 38.69 s |
+| 4. img2img 768x768 direct | 5.82 s |
+| 5. 1024x1024 direct | 22.46 s |
+| 6. Edit 768x768 (1 reference image) | 25.39 s |
 
 ### Model size comparison
 

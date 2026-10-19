@@ -2,13 +2,14 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "core/util.h"
 #include "pickle_io.h"
-#include "util.h"
 
 // torch.save format background:
 //
@@ -98,7 +99,7 @@ static std::string torch_legacy_diagnostics(const std::string& file_path, const 
 bool read_torch_legacy_file(const std::string& file_path,
                             std::vector<TensorStorage>& tensor_storages,
                             std::string* error) {
-    std::ifstream file(file_path, std::ios::binary);
+    std::ifstream file(std::filesystem::u8path(file_path), std::ios::binary);
     if (!file.is_open()) {
         set_error(error, "failed to open '" + file_path + "'");
         return false;
@@ -139,11 +140,16 @@ bool read_torch_legacy_file(const std::string& file_path,
             if (it == legacy_storage_map.end()) {
                 return false;
             }
-            if (current_offset + LEGACY_STORAGE_HEADER_SIZE + it->second > file_size) {
+            if (current_offset > file_size ||
+                LEGACY_STORAGE_HEADER_SIZE > file_size - current_offset) {
                 return false;
             }
-            storage_offsets[storage_key] = current_offset + LEGACY_STORAGE_HEADER_SIZE;
-            current_offset += LEGACY_STORAGE_HEADER_SIZE + it->second;
+            uint64_t storage_offset = current_offset + LEGACY_STORAGE_HEADER_SIZE;
+            if (it->second > file_size - storage_offset) {
+                return false;
+            }
+            storage_offsets[storage_key] = storage_offset;
+            current_offset               = storage_offset + it->second;
         }
 
         for (auto& tensor_storage : tensor_storages) {
@@ -159,8 +165,10 @@ bool read_torch_legacy_file(const std::string& file_path,
 
             uint64_t base_offset    = it_offset->second;
             uint64_t storage_nbytes = it_size->second;
-            uint64_t tensor_nbytes  = tensor_storage.nbytes_to_read();
-            if (tensor_storage.offset + tensor_nbytes > storage_nbytes) {
+            int64_t tensor_nbytes   = tensor_storage.nbytes_to_read();
+            if (tensor_nbytes < 0 ||
+                tensor_storage.offset > storage_nbytes ||
+                static_cast<uint64_t>(tensor_nbytes) > storage_nbytes - tensor_storage.offset) {
                 return false;
             }
 

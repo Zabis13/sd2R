@@ -35,7 +35,10 @@ SAMPLE_METHOD <- list(
   ER_SDE         = 14L,
   EULER_CFG_PP   = 15L,
   EULER_A_CFG_PP = 16L,
-  EULER_GE       = 17L
+  EULER_GE       = 17L,
+  DPMPP_2M_SDE    = 18L,
+  DPMPP_2M_SDE_BT = 19L,
+  LMS             = 20L
 )
 
 #' Schedulers
@@ -52,7 +55,12 @@ SCHEDULER <- list(
   KL_OPTIMAL   = 8L,
   LCM          = 9L,
   BONG_TANGENT = 10L,
-  LTX2         = 11L
+  LTX2         = 11L,
+  LOGIT_NORMAL = 12L,
+  FLUX2        = 13L,
+  FLUX         = 14L,
+  BETA         = 15L,
+  LLADA_IMAGE  = 16L
 )
 
 #' Preview decode modes
@@ -70,14 +78,20 @@ PREVIEW <- list(
 )
 
 #' Prediction types
+#'
+#' \code{FLUX2_FLOW_PRED} is kept as an alias of \code{FLUX_FLOW_PRED}: the
+#' core no longer has a separate FLUX.2 prediction type.
 #' @export
 PREDICTION <- list(
-  EPS             = 0L,
-  V_PRED          = 1L,
-  EDM_V_PRED      = 2L,
-  FLOW_PRED       = 3L,
-  FLUX_FLOW_PRED  = 4L,
-  FLUX2_FLOW_PRED = 5L
+  EPS                    = 0L,
+  V_PRED                 = 1L,
+  EDM_V_PRED             = 2L,
+  FLOW_PRED              = 3L,
+  FLUX_FLOW_PRED         = 4L,
+  SEFI_FLOW_PRED         = 5L,
+  MINIT2I_FLOW_PRED      = 6L,
+  SENSENOVA_U1_FLOW_PRED = 7L,
+  FLUX2_FLOW_PRED        = 4L
 )
 
 #' Weight types (ggml quantization types)
@@ -117,7 +131,10 @@ SD_TYPE <- list(
   MXFP4   = 39L,
   NVFP4   = 40L,
   Q1_0    = 41L,
-  COUNT   = 42L
+  Q2_0    = 42L,
+  F8_E4M3 = 43L,
+  F8_E5M2 = 44L,
+  COUNT   = 45L
 )
 
 #' LoRA apply modes
@@ -136,7 +153,8 @@ SD_CACHE_MODE <- list(
   UCACHE      = 2L,
   DBCACHE     = 3L,
   TAYLORSEER  = 4L,
-  CACHE_DIT   = 5L
+  CACHE_DIT   = 5L,
+  SPECTRUM    = 6L
 )
 
 # ============================================================================

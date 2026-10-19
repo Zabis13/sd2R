@@ -178,15 +178,42 @@ sd_sampler_sigmas <- function(ctx, scheduler = SCHEDULER$DISCRETE,
 #' @param uncond Negative conditioning; empty (all \code{NULL}) disables CFG
 #' @param cfg_scale CFG scale (1 disables CFG)
 #' @param step,total_steps 1-based step index / total, for progress hooks
+#' @param sigma_next Next sigma of the schedule (0 on the last step). Required
+#'   for FLUX.3 (flow-map target timestep); ignored by other models.
+#'   \code{NULL} = no target.
 #' @return An sd_tensor list — the denoised x_0 estimate.
 #' @export
 #' @seealso \code{\link{sd_sample_stepwise}}
 sd_denoise_step <- function(ctx, x, sigma, cond,
                             uncond = list(crossattn = NULL, vector = NULL, concat = NULL),
-                            cfg_scale = 7.0, step = 1L, total_steps = 1L) {
+                            cfg_scale = 7.0, step = 1L, total_steps = 1L,
+                            sigma_next = NULL) {
+  if (is.null(sigma_next) && identical(attr(ctx, "model_type"), "flux3")) {
+    stop("FLUX.3 needs `sigma_next` (the next sigma of the schedule, 0 on the last step).",
+         call. = FALSE)
+  }
   sd_denoise_step_cpp(ctx, x, as.numeric(sigma), cond, uncond,
                       as.numeric(cfg_scale), as.integer(step),
-                      as.integer(total_steps))
+                      as.integer(total_steps),
+                      if (is.null(sigma_next)) -1 else as.numeric(sigma_next))
+}
+
+#' Euler update of a latent (low-level)
+#'
+#' Computes \code{x + (x - denoised) / sigma * (sigma_next - sigma)} in float,
+#' exactly as the built-in Euler sampler, so an R sampling loop built from
+#' \code{\link{sd_denoise_step}} + \code{sd_euler_step} matches
+#' \code{\link{sd_sample}} bit-for-bit.
+#'
+#' @param x Current latent sd_tensor
+#' @param denoised Denoised x_0 estimate from \code{\link{sd_denoise_step}}
+#' @param sigma Current sigma
+#' @param sigma_next Next sigma of the schedule (0 on the last step)
+#' @return An sd_tensor list — the updated latent.
+#' @export
+#' @seealso \code{\link{sd_denoise_step}}, \code{\link{sd_sample_stepwise}}
+sd_euler_step <- function(x, denoised, sigma, sigma_next) {
+  sd_euler_step_cpp(x, denoised, as.numeric(sigma), as.numeric(sigma_next))
 }
 
 #' Open / close a step-wise sampling window (low-level)
@@ -247,7 +274,8 @@ sd_inverse_noise_scale <- function(ctx, x, sigma_last) {
 #' Equivalent to \code{\link{sd_sample}} for the Euler / Euler-a samplers, but
 #' runs the loop in R so a callback can observe or interrupt each step (e.g.
 #' live preview). For Euler (no ancestral noise) the result is bit-for-bit equal
-#' to \code{sd_sample}; Euler-a differs (R RNG vs ggml RNG for the ancestral
+#' to \code{sd_sample} (the update runs in float via \code{\link{sd_euler_step}});
+#' Euler-a differs (R RNG vs ggml RNG for the ancestral
 #' term). Other samplers are not supported here — use \code{\link{sd_sample}}.
 #'
 #' @param ctx SD context
@@ -322,11 +350,10 @@ sd_sample_stepwise <- function(ctx, cond,
 
   for (i in seq_len(n_steps)) {
     sigma <- sigmas[i]
-    den <- sd_denoise_step(ctx, x, sigma, cond, uncond, cfg_scale, i, n_steps)
-    # d = (x - denoised) / sigma ; x = x + d * (sigma_{i+1} - sigma)
-    d  <- (x$data - den$data) / sigma
-    dt <- sigmas[i + 1L] - sigma
-    x$data <- x$data + d * dt
+    den <- sd_denoise_step(ctx, x, sigma, cond, uncond, cfg_scale, i, n_steps,
+                           sigma_next = sigmas[i + 1L])
+    # d = (x - denoised) / sigma ; x = x + d * (sigma_{i+1} - sigma), in float (C++)
+    x <- sd_euler_step(x, den, sigma, sigmas[i + 1L])
 
     if (sample_method == SAMPLE_METHOD$EULER_A && sigmas[i + 1L] > 0) {
       # ancestral: split the next sigma into deterministic + noise parts and
@@ -383,6 +410,7 @@ sd_supports_ref_images <- function(ctx) {
 #' @param sample_method,scheduler Sampler / scheduler (name or enum value)
 #' @param sample_steps,cfg_scale,seed,clip_skip,eta Standard sampling controls
 #' @param batch_count Number of images (default 1)
+#' @param loras LoRA weights: named numeric vector \code{c(path_or_name = weight)}. Prompt tags \code{<lora:name:weight>} are also accepted. See \code{\link{sd_lora}}.
 #' @return List of sd_image lists.
 #' @export
 #' @seealso \code{\link{sd_generate}}, \code{\link{sd_encode_image}}
@@ -395,7 +423,8 @@ sd_generate_multiref <- function(ctx, prompt, refs,
                                  scheduler = SCHEDULER$DISCRETE,
                                  sample_steps = 20L, cfg_scale = 7.0,
                                  seed = 42L, clip_skip = -1L, eta = 0.0,
-                                 batch_count = 1L) {
+                                 batch_count = 1L,
+                                 loras = NULL) {
   if (!is.list(refs) || length(refs) == 0L) {
     stop("`refs` must be a non-empty list of sd_image lists.", call. = FALSE)
   }
@@ -442,5 +471,5 @@ sd_generate_multiref <- function(ctx, prompt, refs,
     increase_ref_index = isTRUE(increase_ref_index)
   )
 
-  sd_generate_image(ctx, params)
+  .sd_generate_with_loras(ctx, params, loras)
 }

@@ -5,7 +5,7 @@ library(jsonlite)
 
 cat("=== Async test with httpuv event loop (closest to Shiny) ===\n\n")
 
-models_dir <- "/mnt/Data2/DS_projects/sd_models"
+models_dir <- "/mnt/Data3/DS_Data/sd_models"
 ctx <- sd_ctx(
   diffusion_model_path = file.path(models_dir, "flux1-dev-Q4_K_S.gguf"),
   vae_path = file.path(models_dir, "ae.safetensors"),

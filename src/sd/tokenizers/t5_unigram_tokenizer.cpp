@@ -5,9 +5,9 @@
 #include <cmath>
 #include <sstream>
 
+#include "core/util.h"
 #include "json.hpp"
 #include "tokenize_util.h"
-#include "util.h"
 #include "vocab/vocab.h"
 
 // Port from: https://github.com/google/sentencepiece/blob/master/src/unigram_model.h
@@ -301,11 +301,21 @@ std::string T5UniGramTokenizer::normalize(const std::string& input) const {
     return normalized;
 }
 
-std::vector<int> T5UniGramTokenizer::encode(const std::string& input, on_new_token_cb_t on_new_token_cb) {
+bool T5UniGramTokenizer::encode(const std::string& input, std::vector<int>& result, on_new_token_cb_t on_new_token_cb, std::string* error) {
+    result.clear();
+    if (error) {
+        error->clear();
+    }
     std::vector<int32_t> tokens;
     std::vector<std::string> token_strs;
     std::string normalized = normalize(input);
-    auto splited_texts     = split_with_special_tokens(normalized, special_tokens);
+    if (normalized.empty()) {
+        // HF reference tokenizers emit no pieces for empty input; pad_tokens
+        // still appends EOS so the sequence becomes [EOS] + padding.
+        result = std::move(tokens);
+        return true;
+    }
+    auto splited_texts = split_with_special_tokens(normalized, special_tokens);
     if (splited_texts.empty()) {
         splited_texts.push_back(normalized);  // for empty string
     }
@@ -347,7 +357,8 @@ std::vector<int> T5UniGramTokenizer::encode(const std::string& input, on_new_tok
         ss << "\"" << token_str << "\", ";
     }
     ss << "]";
-    LOG_DEBUG("split prompt \"%s\" to tokens %s", input.c_str(), ss.str().c_str());
+    LOG_VERBOSE("split prompt \"%s\" to tokens %s", escape_newlines(input).c_str(), escape_newlines(ss.str()).c_str());
 
-    return tokens;
+    result = std::move(tokens);
+    return true;
 }

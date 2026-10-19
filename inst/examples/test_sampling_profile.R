@@ -6,7 +6,7 @@ Sys.setenv(GGML_VK_PERF_LOGGER = "1")
 
 library(sd2R)
 
-models_dir <- "/mnt/Data2/DS_projects/sd_models"
+models_dir <- "/mnt/Data3/DS_Data/sd_models"
 
 # Split lines into named sections by "----------------" separator.
 # Section names: "clip", "t5", "dit_double", "dit_single", "vae", "other" —

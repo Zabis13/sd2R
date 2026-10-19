@@ -55,7 +55,7 @@ sd_default_params <- function() {
     flow_shift       = NULL,
     hr_strength      = 0.4,
     vae_mode         = "auto",
-    vae_tile_size    = 64L,
+    vae_tile_size    = 512L,
     vae_tile_overlap = 0.25,
     cache_mode       = "off",
     cache_config     = NULL

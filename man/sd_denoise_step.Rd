@@ -12,7 +12,8 @@ sd_denoise_step(
   uncond = list(crossattn = NULL, vector = NULL, concat = NULL),
   cfg_scale = 7,
   step = 1L,
-  total_steps = 1L
+  total_steps = 1L,
+  sigma_next = NULL
 )
 }
 \arguments{
@@ -29,6 +30,10 @@ sd_denoise_step(
 \item{cfg_scale}{CFG scale (1 disables CFG)}
 
 \item{step, total_steps}{1-based step index / total, for progress hooks}
+
+\item{sigma_next}{Next sigma of the schedule (0 on the last step). Required
+for FLUX.3 (flow-map target timestep); ignored by other models.
+\code{NULL} = no target.}
 }
 \value{
 An sd_tensor list — the denoised x_0 estimate.

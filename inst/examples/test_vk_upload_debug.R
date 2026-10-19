@@ -15,7 +15,7 @@
 suppressMessages(library(sd2R))
 
 args        <- commandArgs(trailingOnly = TRUE)
-models_dir  <- if (length(args) >= 1) args[1] else "/mnt/Data2/DS_projects/sd_models"
+models_dir  <- if (length(args) >= 1) args[1] else "/mnt/Data3/DS_Data/sd_models"
 n_threads   <- if (length(args) >= 2) as.integer(args[2]) else 1L
 out_dir     <- if (length(args) >= 3) args[3] else tempdir()
 dbg_log     <- if (length(args) >= 4) args[4] else file.path(out_dir, "ggmlr_dbg.log")
