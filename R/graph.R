@@ -5,7 +5,10 @@
 #' Create a pipeline node
 #'
 #' @param type Node type. High-level: \code{"txt2img"}, \code{"img2img"},
-#'   \code{"upscale"}, \code{"save"}. Low-level (see Details):
+#'   \code{"upscale"}, \code{"save"}, \code{"remove_background"}
+#'   (\code{image -> image}; params \code{model_path} (required),
+#'   \code{device}, \code{output}, \code{threshold}; see
+#'   \code{\link{sd_remove_background}}). Low-level (see Details):
 #'   \code{"encode_text"}, \code{"load_image"}, \code{"encode_image"},
 #'   \code{"sample"}, \code{"decode"}.
 #' @param ... Parameters for the node (passed to the corresponding function).
@@ -241,6 +244,16 @@ print.sd_pipeline <- function(x, ...) {
     run = function(env, params, inputs) {
       sd_save_image(inputs$image, params$path)
       list(image = inputs$image)
+    }
+  ),
+  remove_background = list(
+    inputs = "image", optional = character(0), outputs = "image",
+    required_params = "model_path",
+    run = function(env, params, inputs) {
+      model <- .rmbg_cached(params$model_path, params$device)
+      list(image = sd_remove_background(inputs$image, model,
+                                        output = params$output %||% "rgba",
+                                        threshold = params$threshold))
     }
   ),
   # --- low-level nodes (encode -> sample -> decode) ---

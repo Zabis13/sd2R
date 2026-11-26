@@ -1550,9 +1550,9 @@ namespace LLM {
     public:
         Attention(const LLMConfig& config, bool global_layer = false)
             : arch(config.arch),
+              head_dim(global_layer && config.global_head_dim > 0 ? config.global_head_dim : config.head_dim),
               num_heads(config.num_heads),
               num_kv_heads(global_layer && config.num_global_kv_heads > 0 ? config.num_global_kv_heads : config.num_kv_heads),
-              head_dim(global_layer && config.global_head_dim > 0 ? config.global_head_dim : config.head_dim),
               qk_norm(config.qk_norm),
               max_position_embeddings(config.max_position_embeddings),
               rope_thetas(config.rope_thetas),

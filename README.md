@@ -38,7 +38,7 @@ R  →  sd2R  →  ggmlR  →  Vulkan  →  GPU
 - **Highres Fix**: classic two-pass pipeline — generates base image at native model resolution, upscales (bilinear or ESRGAN), then refines with tiled img2img at low denoising strength. Produces coherent high-resolution images (2K, 4K+) with global composition preserved.
 - **Image utilities** in R: saving generated images to PNG, converting between internal tensors and R raw vectors, and simple inspection of output tensors.
 - **System introspection** via `sd_system_info()`, reporting GGML/Vulkan capabilities as detected by ggmlR at build time.
-- **Pipeline graph API**: `sd_pipeline()` + `sd_node()` for composable, sequential multi-step workflows (txt2img → upscale → img2img → save). Pipelines are serializable to JSON via `sd_save_pipeline()` / `sd_load_pipeline()`.
+- **Pipeline graph API**: `sd_pipeline()` + `sd_node()` for composable, sequential multi-step workflows (txt2img → upscale → img2img → save, or low-level encode_text → sample → decode). Nodes pass typed slots and the pipeline is validated before running. Pipelines are serializable to JSON via `sd_save_pipeline()` / `sd_load_pipeline()`.
 - **Shiny GUI**: `sd_app()` launches an interactive web interface with auto-detection of model architecture, non-blocking async generation (C++ `std::thread`), live progress bar with ETA, and automatic role assignment for multi-file models (Flux, FLUX.2, FLUX.3, SD3).
 
 ## Shiny GUI
@@ -77,8 +77,16 @@ Features:
 pipe <- sd_pipeline(
   sd_node("txt2img", prompt = "a cat in space", width = 512, height = 512),
   sd_node("upscale", factor = 2),
-  sd_node("img2img", strength = 0.3),
+  sd_node("img2img", prompt = "a cat in space", strength = 0.3),
   sd_node("save", path = "output.png")
+)
+
+# Low-level nodes: encode -> sample -> decode (latent shape read from the model)
+pipe2 <- sd_pipeline(
+  sd_node("encode_text", prompt = "a cat in space", negative_prompt = "blurry"),
+  sd_node("sample", width = 768, height = 768, sample_steps = 20),
+  sd_node("decode"),
+  sd_node("save", path = "output2.png")
 )
 
 # Save / load as JSON

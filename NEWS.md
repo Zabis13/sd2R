@@ -1,3 +1,11 @@
+# sd2R 0.2.3
+
+* Pipeline graph: typed slots (`cond`, `uncond`, `latent`, `image`) validated before running; new low-level nodes `encode_text`, `load_image`, `encode_image`, `sample`, `decode`.
+* `sd_load_pipeline()` uses a safe JSON parser (no code evaluation); strings with quotes, backslashes and newlines now round-trip.
+* Windows build fixes (`convert.cpp` output, `<windows.h>` vs `abort()` macro).
+
+---
+
 # sd2R 0.2.2
 
 * C++ core updated to stable-diffusion.cpp master (2026-10). Requires ggmlR >= 0.8.8.

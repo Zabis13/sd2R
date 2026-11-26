@@ -1424,7 +1424,7 @@ struct T5CLIPEmbedder : public Conditioner {
                    bool is_umt5                                        = false,
                    std::shared_ptr<RunnerWeightManager> weight_manager = nullptr,
                    const char* model_args                              = nullptr)
-        : use_mask(use_mask), mask_pad(mask_pad), t5_tokenizer(is_umt5) {
+        : t5_tokenizer(is_umt5), use_mask(use_mask), mask_pad(mask_pad) {
         for (const auto& [key, value] : parse_key_value_args(model_args, "model arg")) {
             if (key == "chroma_use_t5_mask") {
                 bool parsed = false;

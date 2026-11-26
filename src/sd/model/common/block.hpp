@@ -335,10 +335,10 @@ public:
                    int64_t n_head,
                    int64_t d_head,
                    bool enable_ip = false)
-        : n_head(n_head),
-          d_head(d_head),
-          query_dim(query_dim),
+        : query_dim(query_dim),
           context_dim(context_dim),
+          n_head(n_head),
+          d_head(d_head),
           enable_ip(enable_ip) {
         int64_t inner_dim = d_head * n_head;
         if (context_dim == 320 && d_head == 320) {

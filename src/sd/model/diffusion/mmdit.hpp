@@ -161,13 +161,13 @@ public:
                bool flatten         = true,
                bool dynamic_img_pad = true,
                bool is_3d           = false)
-        : patch_t(is_3d ? patch_size : 1),
-          patch_h(patch_size),
-          patch_w(patch_size),
-          embed_dim(embed_dim),
+        : is_3d(is_3d),
           flatten(flatten),
           dynamic_img_pad(dynamic_img_pad),
-          is_3d(is_3d) {
+          patch_t(is_3d ? patch_size : 1),
+          patch_h(patch_size),
+          patch_w(patch_size),
+          embed_dim(embed_dim) {
         // img_size is always None
         // patch_size is always 2
         // in_chans is always 16
@@ -200,13 +200,13 @@ public:
                bool bias            = true,
                bool flatten         = true,
                bool dynamic_img_pad = true)
-        : patch_t(std::get<0>(patch_size)),
-          patch_h(std::get<1>(patch_size)),
-          patch_w(std::get<2>(patch_size)),
-          embed_dim(embed_dim),
+        : is_3d(true),
           flatten(flatten),
           dynamic_img_pad(dynamic_img_pad),
-          is_3d(true) {
+          patch_t(std::get<0>(patch_size)),
+          patch_h(std::get<1>(patch_size)),
+          patch_w(std::get<2>(patch_size)),
+          embed_dim(embed_dim) {
         SD_UNUSED(img_size);
         blocks["proj"] = std::make_shared<Conv3d>(in_chans,
                                                   embed_dim,

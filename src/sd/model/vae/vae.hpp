@@ -170,7 +170,7 @@ public:
         ggml_backend_t backend,
         const std::string& weight_prefix                    = "",
         std::shared_ptr<RunnerWeightManager> weight_manager = nullptr)
-        : version(version), weight_prefix(weight_prefix), GGMLRunner(backend, weight_manager) {}
+        : GGMLRunner(backend, weight_manager), version(version), weight_prefix(weight_prefix) {}
 
     int get_scale_factor() {
         int scale_factor = 8;

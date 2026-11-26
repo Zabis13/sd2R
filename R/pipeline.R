@@ -1735,7 +1735,11 @@ sd_txt2img_highres <- function(ctx,
 #' @return Resized SD image
 #' @keywords internal
 .resize_sd_image <- function(image, target_w, target_h) {
-  arr <- sd_image_to_array(image)  # [H, W, C] in [0,1]
+  .array_to_sd_image(.resize_array(sd_image_to_array(image), target_w, target_h))
+}
+
+# Bilinear resize of a numeric array [H, W, C] (center-aligned sampling)
+.resize_array <- function(arr, target_w, target_h) {
   src_h <- dim(arr)[1]
   src_w <- dim(arr)[2]
   ch <- dim(arr)[3]
@@ -1766,7 +1770,7 @@ sd_txt2img_highres <- function(ctx,
                    top[, x1, drop = FALSE] * rep(fx, each = target_h)
   }
 
-  .array_to_sd_image(out)
+  out
 }
 
 #' Convert R array [H, W, 3] to sd_image list

@@ -540,7 +540,7 @@ struct T5Embedder {
                const std::string prefix                            = "",
                bool is_umt5                                        = false,
                std::shared_ptr<RunnerWeightManager> weight_manager = nullptr)
-        : model(backend, tensor_storage_map, prefix, is_umt5, weight_manager), tokenizer(is_umt5) {
+        : tokenizer(is_umt5), model(backend, tensor_storage_map, prefix, is_umt5, weight_manager) {
     }
 
     void get_param_tensors(std::map<std::string, ggml_tensor*>& tensors, const std::string prefix) {

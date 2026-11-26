@@ -212,7 +212,7 @@ struct QFormerPerceiver : public GGMLBlock {
 
 public:
     QFormerPerceiver(int id_embeddings_dim, int cross_attention_d, int num_t, int embedding_dim = 1024, bool use_r = true, int ratio = 4)
-        : cross_attention_dim(cross_attention_d), num_tokens(num_t), use_residul(use_r) {
+        : num_tokens(num_t), cross_attention_dim(cross_attention_d), use_residul(use_r) {
         blocks["token_proj"]          = std::shared_ptr<GGMLBlock>(new Mlp(id_embeddings_dim,
                                                                            id_embeddings_dim * ratio,
                                                                            cross_attention_dim * num_tokens,

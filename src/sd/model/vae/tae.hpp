@@ -769,8 +769,8 @@ struct TinyImageAutoEncoder : public VAE {
                          SDVersion version                                   = VERSION_SD1,
                          std::shared_ptr<RunnerWeightManager> weight_manager = nullptr)
         : VAE(version, backend, "tae", weight_manager),
-          decode_only(decoder_only),
-          taesd(decoder_only, version) {
+          taesd(decoder_only, version),
+          decode_only(decoder_only) {
         scale_input = false;
         taesd.init(params_ctx, tensor_storage_map, prefix);
     }

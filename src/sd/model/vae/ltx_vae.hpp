@@ -1227,7 +1227,8 @@ struct LTXVideoVAE : public VAE {
                 bool decode_only                                    = true,
                 SDVersion version                                   = VERSION_LTXAV,
                 std::shared_ptr<RunnerWeightManager> weight_manager = nullptr)
-        : decode_only(decode_only),
+        : VAE(version, backend, prefix, weight_manager),
+          decode_only(decode_only),
           ltx_vae_version(LTXVAE::detect_ltx_vae_version(tensor_storage_map, prefix)),
           timestep_conditioning(LTXVAE::detect_ltx_vae_timestep_conditioning(tensor_storage_map, prefix)),
           patch_size(4),
@@ -1237,8 +1238,7 @@ struct LTXVideoVAE : public VAE {
               LTXVAE::detect_ltx_vae_timestep_conditioning(tensor_storage_map, prefix),
               patch_size,
               tensor_storage_map,
-              prefix),
-          VAE(version, backend, prefix, weight_manager) {
+              prefix) {
         vae.init(params_ctx, tensor_storage_map, prefix);
         decode_timestep_tensor.values()[0] = vae.decode_timestep;
     }

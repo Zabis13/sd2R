@@ -25,7 +25,7 @@
 
 // convert.o is built without r_ggml_compat.h on Windows (see Makevars.win.in).
 // Detect the compat header by its own include guard: when its redirections are
-// active, printf is already r_ggml_printf; otherwise print through the R API
+// active, r_ggml_printf (declared there) is used; otherwise print through the R API
 // directly (like ggmlR's R_GGML_IO_IMPL files). Checked after all includes.
 #if defined(GGML_R_PACKAGE) && \
     !(defined(R_GGML_COMPAT_H) && !defined(R_GGML_IO_IMPL))
@@ -340,8 +340,12 @@ static bool stream_tensor_data(ModelLoader& model_loader,
     }
 #if SD2R_CONVERT_USE_RPRINTF
     Rprintf("\n");
+#elif defined(GGML_R_PACKAGE)
+    // explicit: <cstdio> #undefs the compat printf macro (and gcc would turn
+    // printf("\n") into putchar, writing to stdout instead of the R console)
+    r_ggml_printf("\n");
 #else
-    printf("\n");  // with r_ggml_compat.h this is r_ggml_printf -> Rvprintf
+    printf("\n");
 #endif
     if (failed) {
         if (error != nullptr) {

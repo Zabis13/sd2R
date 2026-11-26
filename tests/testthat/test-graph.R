@@ -279,6 +279,7 @@ test_that("every registered node type is well-formed", {
   types <- sd2R:::.node_types
   slots <- sd2R:::.slot_types
   expect_setequal(names(types), c("txt2img", "img2img", "upscale", "save",
+                                  "remove_background",
                                   "encode_text", "load_image", "encode_image",
                                   "sample", "decode"))
   for (nm in names(types)) {

@@ -8,7 +8,10 @@ sd_node(type, ...)
 }
 \arguments{
 \item{type}{Node type. High-level: \code{"txt2img"}, \code{"img2img"},
-\code{"upscale"}, \code{"save"}. Low-level (see Details):
+\code{"upscale"}, \code{"save"}, \code{"remove_background"}
+(\code{image -> image}; params \code{model_path} (required),
+\code{device}, \code{output}, \code{threshold}; see
+\code{\link{sd_remove_background}}). Low-level (see Details):
 \code{"encode_text"}, \code{"load_image"}, \code{"encode_image"},
 \code{"sample"}, \code{"decode"}.}
 

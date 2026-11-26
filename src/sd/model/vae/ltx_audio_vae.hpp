@@ -1013,9 +1013,9 @@ namespace LTXV {
                           const std::string& prefix                           = "",
                           std::shared_ptr<RunnerWeightManager> weight_manager = nullptr)
             : AudioVAERunner(backend, weight_manager),
-              weight_prefix(prefix),
               config(LTXAudioVAEConfig::detect_from_weights(tensor_storage_map)),
-              model(config) {
+              model(config),
+              weight_prefix(prefix) {
             model.init(params_ctx, tensor_storage_map, prefix);
             if (config.has_bwe) {
                 const int bwe_ratio    = config.bwe_output_sample_rate / config.bwe_input_sample_rate;

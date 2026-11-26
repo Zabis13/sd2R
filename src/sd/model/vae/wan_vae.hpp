@@ -685,13 +685,13 @@ namespace WAN {
                   std::vector<bool> temperal_downsample = {false, true, true},
                   bool wan2_2                           = false,
                   bool is_2D                            = false)
-            : in_channels(in_channels),
+            : wan2_2(wan2_2),
+              in_channels(in_channels),
               dim(dim),
               z_dim(z_dim),
               dim_mult(dim_mult),
               num_res_blocks(num_res_blocks),
               temperal_downsample(temperal_downsample),
-              wan2_2(wan2_2),
               is_2D(is_2D) {
             // attn_scales is always []
             std::vector<int64_t> dims = {dim};
@@ -868,13 +868,13 @@ namespace WAN {
                   std::vector<bool> temperal_upsample = {true, true, false},
                   bool wan2_2                         = false,
                   bool is_2D                          = false)
-            : out_channels(out_channels),
+            : wan2_2(wan2_2),
+              out_channels(out_channels),
               dim(dim),
               z_dim(z_dim),
               dim_mult(dim_mult),
               num_res_blocks(num_res_blocks),
               temperal_upsample(temperal_upsample),
-              wan2_2(wan2_2),
               is_2D(is_2D) {
             // attn_scales is always []
             std::vector<int64_t> dims = {dim_mult[dim_mult.size() - 1] * dim};
@@ -1071,8 +1071,8 @@ namespace WAN {
 
     public:
         WanVAE(bool decode_only = true, SDVersion version = VERSION_WAN2, bool is_2D = false)
-            : decode_only(decode_only),
-              wan2_2(version == VERSION_WAN2_2_TI2V),
+            : wan2_2(version == VERSION_WAN2_2_TI2V),
+              decode_only(decode_only),
               is_2D(is_2D) {
             // attn_scales is always []
             if (wan2_2) {
