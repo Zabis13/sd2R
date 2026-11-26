@@ -109,3 +109,9 @@ test_that("remove_background graph node runs and is validated", {
   expect_match(err, "node 1 \\(remove_background\\): 'model_path' is not set")
   expect_match(err, "node 1 \\(remove_background\\): needs 'image'")
 })
+
+test_that("sd_rmbg_load refuses ggmlR <= 0.9.0 with a clear error", {
+  local_mocked_bindings(.ggmlr_version = function() package_version("0.9.0"))
+  expect_error(sd_rmbg_load("rmbg.onnx"),
+               "needs ggmlR > 0.9.0 .*installed: 0.9.0")
+})

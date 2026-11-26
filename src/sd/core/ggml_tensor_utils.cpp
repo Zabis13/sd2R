@@ -18,7 +18,9 @@ void ggml_ext_im_set_randn_f32(ggml_tensor* tensor, std::shared_ptr<RNG> rng) {
 }
 
 void print_ggml_tensor(ggml_tensor* tensor, bool shape_only, const char* mark) {
-    r_ggml_printf("%s (%s): shape(%zu, %zu, %zu, %zu)\n", mark, ggml_type_name(tensor->type), tensor->ne[0], tensor->ne[1], tensor->ne[2], tensor->ne[3]);
+    r_ggml_printf("%s (%s): shape(%lld, %lld, %lld, %lld)\n", mark, ggml_type_name(tensor->type),
+                  (long long)tensor->ne[0], (long long)tensor->ne[1],
+                  (long long)tensor->ne[2], (long long)tensor->ne[3]);
     r_ggml_fflush(NULL);
     if (shape_only) {
         return;

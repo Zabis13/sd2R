@@ -16,6 +16,11 @@
 #' @export
 #' @seealso \code{\link{sd_remove_background}}
 sd_rmbg_load <- function(path, device = NULL, dtype = "f32") {
+  v <- .ggmlr_version()
+  if (v <= .rmbg_max_bad_ggmlr) {
+    stop("Background removal needs ggmlR > ", .rmbg_max_bad_ggmlr,
+         " (ONNX MaxPool ceil_mode fix); installed: ", v, call. = FALSE)
+  }
   size <- .rmbg_size
   model <- ggmlR::onnx_load(path, device = device, dtype = dtype)
   inputs <- ggmlR::onnx_inputs(model)
@@ -100,6 +105,11 @@ sd_remove_background <- function(image, model, output = c("rgba", "mask"),
 }
 
 .rmbg_size <- 1024L
+
+# ggmlR <= 0.9.0 mis-sizes ONNX MaxPool with ceil_mode, so RMBG's graph does
+# not build (the package itself still works with older ggmlR)
+.rmbg_max_bad_ggmlr <- "0.9.0"
+.ggmlr_version <- function() utils::packageVersion("ggmlR")
 
 # rgb: [H, W, 3] in [0, 1] -> foreground mask [size, size] ([H, W]) in [0, 1]
 .rmbg_predict <- function(model, rgb) {
