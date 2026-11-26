@@ -184,7 +184,7 @@ namespace Iris {
         TrunkBlock(const IrisConfig& config, bool dual)
             : config(config), dual(dual) {
             int64_t d = config.hidden_size;
-            for (const std::string stream : dual ? std::vector<std::string>{"x", "y"} : std::vector<std::string>{""}) {
+            for (const std::string& stream : dual ? std::vector<std::string>{"x", "y"} : std::vector<std::string>{""}) {
                 std::string suffix                                = stream.empty() ? "" : "_" + stream;
                 std::string attn                                  = dual ? "attn." : "";
                 blocks[attn + "q_proj" + suffix]                  = std::make_shared<Linear>(d, d, false);

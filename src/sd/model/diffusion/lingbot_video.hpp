@@ -370,7 +370,7 @@ namespace LingBotVideo {
             return ggml_argsort_top_k(gctx, masked_scores, static_cast<int>(num_experts_per_tok));
         }
 
-        ggml_tensor* forward(GGMLRunnerContext* ctx, ggml_tensor* x) {
+        ggml_tensor* forward(GGMLRunnerContext* ctx, ggml_tensor* x) override {
             // x: [N, tokens, hidden_size]
             GGML_ASSERT(num_experts > 0);
             GGML_ASSERT(num_experts_per_tok > 0 && num_experts_per_tok <= num_experts);

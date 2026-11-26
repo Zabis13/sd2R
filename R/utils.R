@@ -46,6 +46,7 @@ print.sd_system_info <- function(x, ...) {
 #'
 #' @return No return value, called for side effects.
 #' @export
+#' @usage sd_profile_start()
 #' @name sd_profile_start
 NULL
 
@@ -55,6 +56,7 @@ NULL
 #'
 #' @return No return value, called for side effects.
 #' @export
+#' @usage sd_profile_stop()
 #' @name sd_profile_stop
 NULL
 
@@ -65,6 +67,7 @@ NULL
 #'
 #' @return Data frame of profile events.
 #' @export
+#' @usage sd_profile_get()
 #' @name sd_profile_get
 NULL
 

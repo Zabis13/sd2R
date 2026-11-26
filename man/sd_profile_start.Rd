@@ -3,6 +3,9 @@
 \name{sd_profile_start}
 \alias{sd_profile_start}
 \title{Start profiling}
+\usage{
+sd_profile_start()
+}
 \value{
 No return value, called for side effects.
 }

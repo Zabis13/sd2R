@@ -308,6 +308,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// sd_ctx_latent_info_cpp
+Rcpp::IntegerVector sd_ctx_latent_info_cpp(SEXP ctx_sexp);
+RcppExport SEXP _sd2R_sd_ctx_latent_info_cpp(SEXP ctx_sexpSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_ctx_latent_info_cpp(ctx_sexp));
+    return rcpp_result_gen;
+END_RCPP
+}
 // sd_ctx_supports_ref_cpp
 bool sd_ctx_supports_ref_cpp(SEXP ctx_sexp);
 RcppExport SEXP _sd2R_sd_ctx_supports_ref_cpp(SEXP ctx_sexpSEXP) {
@@ -573,6 +584,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_sd2R_sd_generate_poll", (DL_FUNC) &_sd2R_sd_generate_poll, 0},
     {"_sd2R_sd_generate_result", (DL_FUNC) &_sd2R_sd_generate_result, 0},
     {"_sd2R_sd_ctx_version_cpp", (DL_FUNC) &_sd2R_sd_ctx_version_cpp, 1},
+    {"_sd2R_sd_ctx_latent_info_cpp", (DL_FUNC) &_sd2R_sd_ctx_latent_info_cpp, 1},
     {"_sd2R_sd_ctx_supports_ref_cpp", (DL_FUNC) &_sd2R_sd_ctx_supports_ref_cpp, 1},
     {"_sd2R_sd_ctx_lora_apply_mode_cpp", (DL_FUNC) &_sd2R_sd_ctx_lora_apply_mode_cpp, 1},
     {"_sd2R_sd_ctx_lora_stats_cpp", (DL_FUNC) &_sd2R_sd_ctx_lora_stats_cpp, 1},

@@ -650,6 +650,8 @@ SD_API bool sd_ctx_is_valid(const sd_ctx_t* sd_ctx);
 SD_API int sd_ctx_get_version(const sd_ctx_t* sd_ctx);
 // VAE spatial downscale factor (8 for SD/FLUX.1, 16 for FLUX.2, ...).
 SD_API int sd_ctx_get_vae_scale_factor(sd_ctx_t* sd_ctx);
+// Number of latent channels (4 for SD1/2/XL, 16 for FLUX.1/SD3, ...).
+SD_API int sd_ctx_get_latent_channel(sd_ctx_t* sd_ctx);
 SD_API bool sd_ctx_supports_ref_images(const sd_ctx_t* sd_ctx);
 
 // LoRA application counters of the last generation, one entry per LoRA path

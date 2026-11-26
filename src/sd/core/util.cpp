@@ -119,7 +119,15 @@ int round_up_to(int value, int base) {
 
 #ifdef _WIN32  // code for windows
 #define NOMINMAX
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+// r_ggml_compat.h defines a function-like abort() macro; <windows.h> pulls in
+// headers that declare methods named abort(). Drop it just for this include.
+#pragma push_macro("abort")
+#undef abort
 #include <windows.h>
+#pragma pop_macro("abort")
 
 bool file_exists(const std::string& filename) {
     DWORD attributes = GetFileAttributesW(std::filesystem::u8path(filename).c_str());

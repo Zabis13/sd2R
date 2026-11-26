@@ -81,6 +81,18 @@ int sd_ctx_version_cpp(SEXP ctx_sexp) {
     return sd_ctx_get_version(xptr.get());
 }
 
+// Latent geometry of the loaded model: c(vae_scale_factor, latent_channels).
+// NA for a NULL / freed context.
+// [[Rcpp::export]]
+Rcpp::IntegerVector sd_ctx_latent_info_cpp(SEXP ctx_sexp) {
+    SdCtxXPtr xptr(ctx_sexp);
+    if (!xptr.get() || !sd_ctx_is_valid(xptr.get())) {
+        return Rcpp::IntegerVector::create(NA_INTEGER, NA_INTEGER);
+    }
+    return Rcpp::IntegerVector::create(sd_ctx_get_vae_scale_factor(xptr.get()),
+                                       sd_ctx_get_latent_channel(xptr.get()));
+}
+
 // [[Rcpp::export]]
 bool sd_ctx_supports_ref_cpp(SEXP ctx_sexp) {
     SdCtxXPtr xptr(ctx_sexp);

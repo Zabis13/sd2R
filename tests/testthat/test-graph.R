@@ -278,7 +278,9 @@ test_that("sd_run_pipeline reports all validation errors at once", {
 test_that("every registered node type is well-formed", {
   types <- sd2R:::.node_types
   slots <- sd2R:::.slot_types
-  expect_setequal(names(types), c("txt2img", "img2img", "upscale", "save"))
+  expect_setequal(names(types), c("txt2img", "img2img", "upscale", "save",
+                                  "encode_text", "load_image", "encode_image",
+                                  "sample", "decode"))
   for (nm in names(types)) {
     spec <- types[[nm]]
     expect_true(is.function(spec$run), info = nm)
@@ -355,4 +357,129 @@ test_that("runner rejects a node that returns undeclared slots", {
   ))
   expect_error(sd_run_pipeline(sd_pipeline(sd_node("liar")), ctx = NULL),
                "returned slots \\[latent\\], declared \\[image\\]")
+})
+
+# --- low-level nodes (mocked, no model) ---
+
+test_that("encode_text -> sample -> decode passes slots and latent shape", {
+  seen <- list()
+  local_mocked_bindings(
+    sd_ctx_latent_info_cpp = function(ctx) c(8L, 16L),
+    sd_encode_text = function(ctx, prompt, clip_skip, width, height) {
+      seen$enc <<- c(seen$enc, prompt)
+      list(text = prompt)
+    },
+    sd_sample = function(ctx, cond, uncond, latent_shape, init_latent, ...) {
+      seen$sample <<- list(cond = cond, uncond = uncond, shape = latent_shape,
+                           init = init_latent, extra = list(...))
+      list(ne = c(latent_shape, 1L))
+    },
+    sd_decode_latent = function(ctx, latent) {
+      seen$decode <<- latent
+      list(width = 1L)
+    }
+  )
+  pipe <- sd_pipeline(
+    sd_node("encode_text", prompt = "cat", negative_prompt = "blurry"),
+    sd_node("sample", width = 768L, height = 512L, sample_steps = 4L,
+            cfg_scale = 3.5),
+    sd_node("decode")
+  )
+  out <- sd_run_pipeline(pipe, ctx = "fake_ctx")
+
+  expect_equal(seen$enc, c("cat", "blurry"))
+  expect_equal(seen$sample$cond, list(text = "cat"))
+  expect_equal(seen$sample$uncond, list(text = "blurry"))
+  expect_equal(seen$sample$shape, c(96L, 64L, 16L))   # 768/8, 512/8, 16 ch
+  expect_null(seen$sample$init)
+  expect_equal(seen$sample$extra, list(sample_steps = 4L, cfg_scale = 3.5))
+  expect_equal(seen$decode$ne, c(96L, 64L, 16L, 1L))
+  expect_equal(out, list(width = 1L))
+})
+
+test_that("encode_text without negative_prompt encodes empty uncond", {
+  enc <- character(0)
+  local_mocked_bindings(
+    sd_encode_text = function(ctx, prompt, ...) {
+      enc <<- c(enc, prompt)
+      list(text = prompt)
+    }
+  )
+  sd_run_pipeline(sd_pipeline(sd_node("encode_text", prompt = "cat")),
+                  ctx = "fake_ctx")
+  expect_equal(enc, c("cat", ""))
+})
+
+test_that("sample geometry overrides take precedence over the model", {
+  shapes <- list()
+  local_mocked_bindings(
+    sd_ctx_latent_info_cpp = function(ctx) c(8L, 4L),
+    sd_encode_text = function(...) list(),
+    sd_sample = function(ctx, cond, uncond, latent_shape, ...) {
+      shapes[[length(shapes) + 1L]] <<- latent_shape
+      list()
+    }
+  )
+  run <- function(...) {
+    sd_run_pipeline(sd_pipeline(sd_node("encode_text", prompt = "x"),
+                                sd_node("sample", ...)), ctx = "fake_ctx")
+  }
+  run(width = 512L, height = 512L, latent_channels = 16L)
+  run(width = 512L, height = 512L, vae_scale_factor = 16L)
+  run(latent_shape = c(10L, 20L, 3L))
+  run()                                   # defaults 512x512
+  expect_equal(shapes, list(c(64L, 64L, 16L), c(32L, 32L, 4L),
+                            c(10L, 20L, 3L), c(64L, 64L, 4L)))
+})
+
+test_that("sample without ctx geometry asks for explicit values", {
+  local_mocked_bindings(sd_encode_text = function(...) list())
+  pipe <- sd_pipeline(sd_node("encode_text", prompt = "x"), sd_node("sample"))
+  expect_error(sd_run_pipeline(pipe, ctx = NULL),
+               "pass 'latent_channels' and 'vae_scale_factor'")
+})
+
+test_that("load_image -> encode_image -> sample uses input latent shape", {
+  seen <- list()
+  local_mocked_bindings(
+    sd_ctx_latent_info_cpp = function(ctx) stop("must not be queried"),
+    sd_load_image = function(path, channels) {
+      seen$load <<- c(path, channels)
+      list(width = 64L)
+    },
+    sd_encode_image = function(ctx, image) list(ne = c(8L, 8L, 4L, 1L)),
+    sd_encode_text = function(...) list(),
+    sd_sample = function(ctx, cond, uncond, latent_shape, init_latent, ...) {
+      seen$shape <<- latent_shape
+      seen$init <<- init_latent
+      seen$extra <<- list(...)
+      init_latent
+    },
+    sd_decode_latent = function(ctx, latent) list(width = 64L)
+  )
+  pipe <- sd_pipeline(
+    sd_node("load_image", path = "in.png"),
+    sd_node("encode_image"),
+    sd_node("encode_text", prompt = "x"),
+    sd_node("sample", strength = 0.4, width = 1024L),   # width ignored
+    sd_node("decode")
+  )
+  sd_run_pipeline(pipe, ctx = "fake_ctx")
+  expect_equal(seen$load, c("in.png", "3"))
+  expect_equal(seen$shape, c(8L, 8L, 4L))
+  expect_equal(seen$init$ne, c(8L, 8L, 4L, 1L))
+  expect_equal(seen$extra, list(strength = 0.4))
+})
+
+test_that("low-level nodes are validated before running", {
+  err <- tryCatch(
+    sd_run_pipeline(sd_pipeline(sd_node("sample"), sd_node("encode_image"),
+                                sd_node("load_image"), sd_node("decode"),
+                                sd_node("encode_text")), ctx = NULL),
+    error = conditionMessage)
+  expect_match(err, "node 1 \\(sample\\): needs 'cond'")
+  expect_match(err, "node 2 \\(encode_image\\): needs 'image'")
+  expect_match(err, "node 3 \\(load_image\\): 'path' is not set")
+  expect_match(err, "node 5 \\(encode_text\\): 'prompt' is not set")
+  expect_false(grepl("node 4 \\(decode\\)", err))   # latent from node 1
 })

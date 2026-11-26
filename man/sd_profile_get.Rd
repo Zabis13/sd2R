@@ -3,6 +3,9 @@
 \name{sd_profile_get}
 \alias{sd_profile_get}
 \title{Get raw profile events}
+\usage{
+sd_profile_get()
+}
 \value{
 Data frame of profile events.
 }

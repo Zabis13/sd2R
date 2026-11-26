@@ -7,8 +7,10 @@
 sd_node(type, ...)
 }
 \arguments{
-\item{type}{Node type: \code{"txt2img"}, \code{"img2img"}, \code{"upscale"},
-or \code{"save"}.}
+\item{type}{Node type. High-level: \code{"txt2img"}, \code{"img2img"},
+\code{"upscale"}, \code{"save"}. Low-level (see Details):
+\code{"encode_text"}, \code{"load_image"}, \code{"encode_image"},
+\code{"sample"}, \code{"decode"}.}
 
 \item{...}{Parameters for the node (passed to the corresponding function).}
 }
@@ -17,4 +19,39 @@ A list with class \code{"sd_node"}.
 }
 \description{
 Create a pipeline node
+}
+\details{
+Slots read -> written, and parameters of the low-level nodes:
+\describe{
+  \item{encode_text}{-> \code{cond}, \code{uncond}. \code{prompt}
+    (required), \code{negative_prompt} (default \code{""}),
+    \code{clip_skip}, \code{width}, \code{height}; see
+    \code{\link{sd_encode_text}}.}
+  \item{load_image}{-> \code{image}. \code{path} (required),
+    \code{channels}; see \code{\link{sd_load_image}}.}
+  \item{encode_image}{\code{image} -> \code{latent}; see
+    \code{\link{sd_encode_image}}.}
+  \item{sample}{\code{cond} [+ \code{uncond}, \code{latent}] ->
+    \code{latent}. Other parameters go to \code{\link{sd_sample}}
+    (\code{sample_steps}, \code{cfg_scale}, \code{strength}, \code{seed},
+    ...). Without an input latent the noise shape is
+    \code{c(width, height) / vae_scale_factor} by \code{latent_channels},
+    both read from the model; \code{width}/\code{height} default to 512,
+    and \code{vae_scale_factor}, \code{latent_channels} or a full
+    \code{latent_shape} can be given to override. With an input latent
+    (img2img) its shape is used; set \code{strength} below 1.}
+  \item{decode}{\code{latent} -> \code{image}; see
+    \code{\link{sd_decode_latent}}.}
+}
+}
+\examples{
+\dontrun{
+pipe <- sd_pipeline(
+  sd_node("encode_text", prompt = "a cat", width = 768L, height = 768L),
+  sd_node("sample", width = 768L, height = 768L, sample_steps = 20L),
+  sd_node("decode"),
+  sd_node("save", path = "cat.png")
+)
+sd_run_pipeline(pipe, ctx)
+}
 }

@@ -117,6 +117,10 @@ sd_ctx_version_cpp <- function(ctx_sexp) {
     .Call(`_sd2R_sd_ctx_version_cpp`, ctx_sexp)
 }
 
+sd_ctx_latent_info_cpp <- function(ctx_sexp) {
+    .Call(`_sd2R_sd_ctx_latent_info_cpp`, ctx_sexp)
+}
+
 sd_ctx_supports_ref_cpp <- function(ctx_sexp) {
     .Call(`_sd2R_sd_ctx_supports_ref_cpp`, ctx_sexp)
 }

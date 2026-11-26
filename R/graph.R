@@ -4,10 +4,44 @@
 
 #' Create a pipeline node
 #'
-#' @param type Node type: \code{"txt2img"}, \code{"img2img"}, \code{"upscale"},
-#'   or \code{"save"}.
+#' @param type Node type. High-level: \code{"txt2img"}, \code{"img2img"},
+#'   \code{"upscale"}, \code{"save"}. Low-level (see Details):
+#'   \code{"encode_text"}, \code{"load_image"}, \code{"encode_image"},
+#'   \code{"sample"}, \code{"decode"}.
 #' @param ... Parameters for the node (passed to the corresponding function).
 #' @return A list with class \code{"sd_node"}.
+#' @details Slots read -> written, and parameters of the low-level nodes:
+#' \describe{
+#'   \item{encode_text}{-> \code{cond}, \code{uncond}. \code{prompt}
+#'     (required), \code{negative_prompt} (default \code{""}),
+#'     \code{clip_skip}, \code{width}, \code{height}; see
+#'     \code{\link{sd_encode_text}}.}
+#'   \item{load_image}{-> \code{image}. \code{path} (required),
+#'     \code{channels}; see \code{\link{sd_load_image}}.}
+#'   \item{encode_image}{\code{image} -> \code{latent}; see
+#'     \code{\link{sd_encode_image}}.}
+#'   \item{sample}{\code{cond} [+ \code{uncond}, \code{latent}] ->
+#'     \code{latent}. Other parameters go to \code{\link{sd_sample}}
+#'     (\code{sample_steps}, \code{cfg_scale}, \code{strength}, \code{seed},
+#'     ...). Without an input latent the noise shape is
+#'     \code{c(width, height) / vae_scale_factor} by \code{latent_channels},
+#'     both read from the model; \code{width}/\code{height} default to 512,
+#'     and \code{vae_scale_factor}, \code{latent_channels} or a full
+#'     \code{latent_shape} can be given to override. With an input latent
+#'     (img2img) its shape is used; set \code{strength} below 1.}
+#'   \item{decode}{\code{latent} -> \code{image}; see
+#'     \code{\link{sd_decode_latent}}.}
+#' }
+#' @examples
+#' \dontrun{
+#' pipe <- sd_pipeline(
+#'   sd_node("encode_text", prompt = "a cat", width = 768L, height = 768L),
+#'   sd_node("sample", width = 768L, height = 768L, sample_steps = 20L),
+#'   sd_node("decode"),
+#'   sd_node("save", path = "cat.png")
+#' )
+#' sd_run_pipeline(pipe, ctx)
+#' }
 #' @export
 sd_node <- function(type, ...) {
   valid_types <- names(.node_types)
@@ -208,8 +242,92 @@ print.sd_pipeline <- function(x, ...) {
       sd_save_image(inputs$image, params$path)
       list(image = inputs$image)
     }
+  ),
+  # --- low-level nodes (encode -> sample -> decode) ---
+  encode_text = list(
+    inputs = character(0), optional = character(0),
+    outputs = c("cond", "uncond"),
+    required_params = "prompt",
+    run = function(env, params, inputs) {
+      enc <- function(text) {
+        sd_encode_text(env$ctx, text,
+                       clip_skip = params$clip_skip %||% -1L,
+                       width = params$width %||% -1L,
+                       height = params$height %||% -1L)
+      }
+      # no negative_prompt -> empty-prompt encoding, as in regular CFG
+      list(cond = enc(params$prompt),
+           uncond = enc(params$negative_prompt %||% ""))
+    }
+  ),
+  load_image = list(
+    inputs = character(0), optional = character(0), outputs = "image",
+    required_params = "path",
+    run = function(env, params, inputs) {
+      list(image = sd_load_image(params$path, params$channels %||% 3L))
+    }
+  ),
+  encode_image = list(
+    inputs = "image", optional = character(0), outputs = "latent",
+    required_params = character(0),
+    run = function(env, params, inputs) {
+      list(latent = sd_encode_image(env$ctx, inputs$image))
+    }
+  ),
+  sample = list(
+    inputs = "cond", optional = c("uncond", "latent"), outputs = "latent",
+    required_params = character(0),
+    run = function(env, params, inputs) {
+      shape_keys <- c("width", "height", "latent_channels",
+                      "vae_scale_factor", "latent_shape")
+      init <- inputs$latent
+      shape <- if (!is.null(init)) {
+        init$ne[1:3]  # img2img: noise must match the input latent
+      } else if (!is.null(params$latent_shape)) {
+        as.integer(params$latent_shape)
+      } else {
+        g <- latent_geometry(env$ctx, params$vae_scale_factor,
+                             params$latent_channels)
+        c(as.integer(params$width %||% 512L) %/% g[["vae_scale_factor"]],
+          as.integer(params$height %||% 512L) %/% g[["vae_scale_factor"]],
+          g[["latent_channels"]])
+      }
+      uncond <- inputs$uncond %||% list(crossattn = NULL, vector = NULL,
+                                        concat = NULL)
+      args <- params[setdiff(names(params), shape_keys)]
+      res <- do.call(sd_sample, c(list(ctx = env$ctx, cond = inputs$cond,
+                                       uncond = uncond, latent_shape = shape,
+                                       init_latent = init), args))
+      list(latent = res)
+    }
+  ),
+  decode = list(
+    inputs = "latent", optional = character(0), outputs = "image",
+    required_params = character(0),
+    run = function(env, params, inputs) {
+      list(image = sd_decode_latent(env$ctx, inputs$latent))
+    }
   )
 )
+
+# Latent geometry for the `sample` node: queried from the model, each value
+# can be overridden explicitly (needed when ctx is not a live context).
+latent_geometry <- function(ctx, vae_scale_factor = NULL,
+                            latent_channels = NULL) {
+  if (is.null(vae_scale_factor) || is.null(latent_channels)) {
+    info <- if (is.null(ctx)) c(NA_integer_, NA_integer_)
+            else sd_ctx_latent_info_cpp(ctx)
+    vae_scale_factor <- vae_scale_factor %||% info[1L]
+    latent_channels <- latent_channels %||% info[2L]
+  }
+  if (is.na(vae_scale_factor) || is.na(latent_channels)) {
+    stop("sample: cannot read latent geometry from ctx; pass ",
+         "'latent_channels' and 'vae_scale_factor' (or 'latent_shape')",
+         call. = FALSE)
+  }
+  c(vae_scale_factor = as.integer(vae_scale_factor),
+    latent_channels = as.integer(latent_channels))
+}
 
 # sd_txt2img / sd_img2img return a list of images (batch); take the first
 first_image <- function(res) {

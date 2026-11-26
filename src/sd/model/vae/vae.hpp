@@ -398,7 +398,7 @@ struct FakeVAE : public VAE {
             std::shared_ptr<RunnerWeightManager> weight_manager = nullptr)
         : VAE(version, backend, "", weight_manager) {}
 
-    int get_encoder_output_channels(int input_channels) {
+    int get_encoder_output_channels(int input_channels) override {
         return input_channels;
     }
 

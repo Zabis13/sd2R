@@ -236,6 +236,13 @@ SD_API int sd_ctx_get_vae_scale_factor(sd_ctx_t* sd_ctx) {
     return sd_ctx->sd->get_vae_scale_factor();
 }
 
+SD_API int sd_ctx_get_latent_channel(sd_ctx_t* sd_ctx) {
+    if (sd_ctx == nullptr || sd_ctx->sd == nullptr) {
+        return 4;
+    }
+    return sd_ctx->sd->get_latent_channel();
+}
+
 SD_API int sd_ctx_lora_stats(sd_ctx_t* sd_ctx, sd_lora_stat_t* out, int max_count) {
     if (sd_ctx == nullptr || sd_ctx->sd == nullptr) {
         return 0;

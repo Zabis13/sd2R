@@ -3,6 +3,9 @@
 \name{sd_profile_stop}
 \alias{sd_profile_stop}
 \title{Stop profiling}
+\usage{
+sd_profile_stop()
+}
 \value{
 No return value, called for side effects.
 }

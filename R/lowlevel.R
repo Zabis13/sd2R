@@ -129,8 +129,7 @@ sd_sample <- function(ctx, cond, uncond = list(crossattn = NULL, vector = NULL, 
 # ===========================================================================
 # Expose one denoise step so the sampler loop can live in R, giving per-step
 # preview / interruption. Euler family only; for caches / tiled / control /
-# multistep samplers use sd_sample() (the whole loop). See
-# dev/9.2-stage2-design.md.
+# multistep samplers use sd_sample() (the whole loop).
 
 #' Sigma schedule for a sampler (low-level)
 #'

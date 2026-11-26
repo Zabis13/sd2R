@@ -67,7 +67,7 @@ protected:
     int64_t in_channels;
     bool use_linear;
 
-    void init_params(ggml_context* ctx, const String2TensorStorage& tensor_storage_map = {}, const std::string prefix = "") {
+    void init_params(ggml_context* ctx, const String2TensorStorage& tensor_storage_map = {}, const std::string prefix = "") override {
         auto iter = tensor_storage_map.find(prefix + "proj_out.weight");
         if (iter != tensor_storage_map.end()) {
             if (iter->second.n_dims == 4 && use_linear) {
@@ -836,7 +836,7 @@ struct AutoEncoderKL : public VAE {
         return (latents - shift_factor) * scale_factor;
     }
 
-    int get_encoder_output_channels(int input_channels) {
+    int get_encoder_output_channels(int input_channels) override {
         return ae.get_encoder_output_channels();
     }
 

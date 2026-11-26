@@ -796,7 +796,7 @@ struct TinyImageAutoEncoder : public VAE {
         return latents;
     }
 
-    int get_encoder_output_channels(int input_channels) {
+    int get_encoder_output_channels(int input_channels) override {
         return taesd.z_channels;
     }
 
@@ -880,7 +880,7 @@ struct TinyVideoAutoEncoder : public VAE {
         return latents;
     }
 
-    int get_encoder_output_channels(int input_channels) {
+    int get_encoder_output_channels(int input_channels) override {
         return taehv.z_channels;
     }
 
