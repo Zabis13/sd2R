@@ -51,7 +51,9 @@ void profile_mark_generate_start() {
     if (r_sd_profiling) {
         double ts = profile_now_ms();
         r_profile_events.push_back({"generate_total", "start", ts});
-        r_profile_events.push_back({"text_encode", "start", ts});
+        // text_encode start comes from the "PHASE: text-encode ... BEGIN" log:
+        // img2img runs VAE encode before the text encoder, so starting here
+        // made text_encode swallow vae_encode.
     }
 }
 
@@ -98,9 +100,14 @@ static void profile_parse_log(const std::string& msg) {
     else if (msg.find("text_encode_t5 completed") != std::string::npos) {
         r_profile_events.push_back({"text_encode_t5", "end", ts});
     }
-    // Text encoding total
-    else if (msg.find("get_learned_condition completed") != std::string::npos ||
-             msg.find("PHASE: text-encode END") != std::string::npos) {
+    // Text encoding total: start right before get_learned_condition()
+    else if (msg.find("PHASE: text-encode (get_learned_condition) BEGIN") != std::string::npos) {
+        r_profile_events.push_back({"text_encode", "start", ts});
+    }
+    // Text encoding end. Only "get_learned_condition completed" (cond + uncond);
+    // image.cpp also logs "PHASE: text-encode END" after cond alone — matching
+    // both gave two ends per start and broke multi-pass pairing (highres fix).
+    else if (msg.find("get_learned_condition completed") != std::string::npos) {
         r_profile_events.push_back({"text_encode", "end", ts});
     }
     // Sampling start. NOTE: sd.cpp emits "sampling using <method>" very early —

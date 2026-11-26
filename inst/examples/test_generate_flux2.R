@@ -90,11 +90,35 @@ print(sd_profile_summary(sd_profile_get()))
 sd_save_image(imgs_1[[1]], file.path(out_dir, "sd2R_flux2_768.png"))
 cat("Saved: /tmp/sd2R_flux2_768.png\n")
 
-# --- 2. FLUX.2 1024x1024, tiled VAE ---
-cat("\n--- 2. FLUX.2 1024x1024 -> tiled VAE ---\n")
+# --- 2. FLUX.2 1024x1024 -> direct ---
+cat("\n--- 2. FLUX.2 1024x1024 -> direct ---\n")
 sd_profile_start()
 t0 <- proc.time()
 imgs_2 <- sd_generate(
+  ctx,
+  prompt = "Busy traditional Japanese shopping street (shotengai), yakitori and ramen vendors,
+paper lanterns, wooden shop signs in kanji, tourists and locals in yukata,
+takoyaki stall with sizzling batter, narrow alley lined with izakayas, steam
+from hot food, wet cobblestones, neon signs, photorealistic, 8k, hyperdetailed,
+street photography, shot on Sony A7R, f/8, sharp focus",
+  width         = 1024L, height = 1024L,
+  sample_steps  = 4L, seed = 42L,
+  sample_method = SAMPLE_METHOD$EULER,
+  scheduler     = SCHEDULER$DISCRETE,
+  vae_mode      = "normal"
+)
+elapsed[2] <- (proc.time() - t0)[["elapsed"]]
+sd_profile_stop()
+cat(sprintf("wall time: %.2fs | %dx%d\n", elapsed[2], imgs_2[[1]]$width, imgs_2[[1]]$height))
+print(sd_profile_summary(sd_profile_get()))
+sd_save_image(imgs_2[[1]], file.path(out_dir, "sd2R_flux2_direct_1k.png"))
+cat("Saved: /tmp/sd2R_flux2_direct_1k.png\n")
+
+# --- 3. FLUX.2 1024x1024, tiled VAE ---
+cat("\n--- 3. FLUX.2 1024x1024 -> tiled VAE ---\n")
+sd_profile_start()
+t0 <- proc.time()
+imgs_3 <- sd_generate(
   ctx,
   prompt = "Busy street in a vibrant Chinese quarter, street food vendors with steaming woks,
 colorful lanterns hanging overhead, crowded market stalls with exotic fruits and
@@ -107,18 +131,18 @@ hyperdetailed, street photography style, golden hour lighting",
   scheduler     = SCHEDULER$DISCRETE,
   vae_mode      = "tiled"
 )
-elapsed[2] <- (proc.time() - t0)[["elapsed"]]
+elapsed[3] <- (proc.time() - t0)[["elapsed"]]
 sd_profile_stop()
-cat(sprintf("wall time: %.2fs | %dx%d\n", elapsed[2], imgs_2[[1]]$width, imgs_2[[1]]$height))
+cat(sprintf("wall time: %.2fs | %dx%d\n", elapsed[3], imgs_3[[1]]$width, imgs_3[[1]]$height))
 print(sd_profile_summary(sd_profile_get()))
-sd_save_image(imgs_2[[1]], file.path(out_dir, "sd2R_flux2_tiled_1k.png"))
+sd_save_image(imgs_3[[1]], file.path(out_dir, "sd2R_flux2_tiled_1k.png"))
 cat("Saved: /tmp/sd2R_flux2_tiled_1k.png\n")
 
-# --- 3. FLUX.2 2048x1024 -> auto highres fix ---
-cat("\n--- 3. FLUX.2 2048x1024 -> auto highres fix ---\n")
+# --- 4. FLUX.2 2048x1024 -> auto highres fix ---
+cat("\n--- 4. FLUX.2 2048x1024 -> auto highres fix ---\n")
 sd_profile_start()
 t0 <- proc.time()
-imgs_3 <- sd_generate(
+imgs_4 <- sd_generate(
   ctx,
   prompt = "Bustling Chinatown street market, food stalls, dim sum vendors, crowded alley,
 hanging red lanterns, neon signs, steam from cooking, photorealistic, 8k,
@@ -129,18 +153,18 @@ cinematic, shot on Sony A7R, f/8, sharp focus, high detail",
   sample_method = SAMPLE_METHOD$EULER,
   scheduler     = SCHEDULER$DISCRETE
 )
-elapsed[3] <- (proc.time() - t0)[["elapsed"]]
+elapsed[4] <- (proc.time() - t0)[["elapsed"]]
 sd_profile_stop()
-cat(sprintf("wall time: %.2fs | %dx%d\n", elapsed[3], imgs_3[[1]]$width, imgs_3[[1]]$height))
+cat(sprintf("wall time: %.2fs | %dx%d\n", elapsed[4], imgs_4[[1]]$width, imgs_4[[1]]$height))
 print(sd_profile_summary(sd_profile_get()))
-sd_save_image(imgs_3[[1]], file.path(out_dir, "sd2R_flux2_highres_panorama.png"))
+sd_save_image(imgs_4[[1]], file.path(out_dir, "sd2R_flux2_highres_panorama.png"))
 cat("Saved: /tmp/sd2R_flux2_highres_panorama.png\n")
 
-# --- 4. FLUX.2 img2img 768x768 ---
-cat("\n--- 4. FLUX.2 img2img 768x768 ---\n")
+# --- 5. FLUX.2 img2img 768x768 ---
+cat("\n--- 5. FLUX.2 img2img 768x768 ---\n")
 sd_profile_start()
 t0 <- proc.time()
-imgs_4 <- sd_generate(
+imgs_5 <- sd_generate(
   ctx,
   prompt        = "a cat sitting on a chair, oil painting, masterpiece",
   init_image    = imgs_1[[1]],
@@ -150,44 +174,20 @@ imgs_4 <- sd_generate(
   scheduler     = SCHEDULER$DISCRETE,
   vae_mode      = "tiled"
 )
-elapsed[4] <- (proc.time() - t0)[["elapsed"]]
-sd_profile_stop()
-cat(sprintf("wall time: %.2fs | %dx%d\n", elapsed[4], imgs_4[[1]]$width, imgs_4[[1]]$height))
-print(sd_profile_summary(sd_profile_get()))
-sd_save_image(imgs_4[[1]], file.path(out_dir, "sd2R_flux2_img2img.png"))
-cat("Saved: /tmp/sd2R_flux2_img2img.png\n")
-
-# --- 5. FLUX.2 1024x1024 -> direct ---
-cat("\n--- 5. FLUX.2 1024x1024 -> direct ---\n")
-sd_profile_start()
-t0 <- proc.time()
-imgs_5 <- sd_generate(
-  ctx,
-  prompt = "Busy traditional Japanese shopping street (shotengai), yakitori and ramen vendors,
-paper lanterns, wooden shop signs in kanji, tourists and locals in yukata,
-takoyaki stall with sizzling batter, narrow alley lined with izakayas, steam
-from hot food, wet cobblestones, neon signs, photorealistic, 8k, hyperdetailed,
-street photography, shot on Sony A7R, f/8, sharp focus",
-  width         = 1024L, height = 1024L,
-  sample_steps  = 4L, seed = 42L,
-  sample_method = SAMPLE_METHOD$EULER,
-  scheduler     = SCHEDULER$DISCRETE,
-  vae_mode      = "tiled"
-)
 elapsed[5] <- (proc.time() - t0)[["elapsed"]]
 sd_profile_stop()
 cat(sprintf("wall time: %.2fs | %dx%d\n", elapsed[5], imgs_5[[1]]$width, imgs_5[[1]]$height))
 print(sd_profile_summary(sd_profile_get()))
-sd_save_image(imgs_5[[1]], file.path(out_dir, "sd2R_flux2_direct_1k.png"))
-cat("Saved: /tmp/sd2R_flux2_direct_1k.png\n")
+sd_save_image(imgs_5[[1]], file.path(out_dir, "sd2R_flux2_img2img.png"))
+cat("Saved: /tmp/sd2R_flux2_img2img.png\n")
 
 # --- Summary ---
 cat("\n=== Summary ===\n")
 cat(sprintf("1. 768x768  direct:           %.2fs\n", elapsed[1]))
-cat(sprintf("2. 1024x1024 tiled VAE:        %.2fs\n", elapsed[2]))
-cat(sprintf("3. 2048x1024 highres fix:      %.2fs\n", elapsed[3]))
-cat(sprintf("4. img2img 768x768:            %.2fs\n", elapsed[4]))
-cat(sprintf("5. 1024x1024 direct:           %.2fs\n", elapsed[5]))
+cat(sprintf("2. 1024x1024 direct:           %.2fs\n", elapsed[2]))
+cat(sprintf("3. 1024x1024 tiled VAE:        %.2fs\n", elapsed[3]))
+cat(sprintf("4. 2048x1024 highres fix:      %.2fs\n", elapsed[4]))
+cat(sprintf("5. img2img 768x768:            %.2fs\n", elapsed[5]))
 
 rm(ctx, imgs_1, imgs_2, imgs_3, imgs_4, imgs_5)
 gc()

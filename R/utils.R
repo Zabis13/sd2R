@@ -116,14 +116,21 @@ sd_profile_summary <- function(events) {
     if (s == "load_all") next
     s_starts <- starts$timestamp_ms[starts$stage == s]
     s_ends   <- ends$timestamp_ms[ends$stage == s]
-    n <- min(length(s_starts), length(s_ends))
-    if (n > 0L) {
-      for (i in seq_len(n)) {
-        dur <- s_ends[i] - s_starts[i]
+    if (length(s_starts) > 0L && length(s_ends) > 0L) {
+      # Pair each start with the first end after it and before the next start
+      # of the same stage; surplus ends (e.g. two log markers for one stage
+      # end) are ignored instead of shifting the pairing of later passes.
+      s_starts <- sort(s_starts)
+      s_ends   <- sort(s_ends)
+      for (i in seq_along(s_starts)) {
+        next_start <- if (i < length(s_starts)) s_starts[i + 1L] else Inf
+        cand <- s_ends[s_ends >= s_starts[i] & s_ends < next_start]
+        if (length(cand) == 0L) next
+        dur <- cand[1L] - s_starts[i]
         rows[[length(rows) + 1L]] <- data.frame(
           stage = s,
           start_ms = s_starts[i],
-          end_ms = s_ends[i],
+          end_ms = cand[1L],
           duration_ms = dur,
           duration_s = round(dur / 1000, 2),
           stringsAsFactors = FALSE
