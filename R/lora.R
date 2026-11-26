@@ -15,7 +15,7 @@
 #' webui-style tags in the prompt. Both forms can be mixed.
 #'
 #' \strong{Explicit:} \code{loras = c("style.safetensors" = 0.8, "detail" = 0.5)}
-#' — a named numeric vector, names are paths or names, values are weights.
+#' -- a named numeric vector, names are paths or names, values are weights.
 #'
 #' \strong{Prompt tags:} \code{"a cat <lora:style:0.8>"}. Tags are removed from
 #' the prompt before encoding. The name may contain spaces and colons (e.g.
@@ -55,7 +55,7 @@
 #'     slower.}
 #'   \item{\code{IMMEDIATELY}}{the delta is merged into the weights once. For
 #'     quantized weights this is dequantize -> add -> requantize, so part of the
-#'     (small) LoRA delta is lost to quantization — the usual reason for
+#'     (small) LoRA delta is lost to quantization -- the usual reason for
 #'     "LoRA looks weaker / worse than expected". Not available for INT8
 #'     tensorwise weights, row-split tensors, or weight types the backend
 #'     cannot write back to (Vulkan: K-quants and most IQ types); then the whole
@@ -206,13 +206,13 @@ sd_lora_apply_mode <- function(ctx) {
     applied <- if (nrow(row)) row$applied[1] else 0
     skipped <- if (nrow(row)) row$skipped[1] else 0
     if (applied == 0) {
-      stop(sprintf(paste0("LoRA '%s': 0 of %d tensors applied — it does not match ",
+      stop(sprintf(paste0("LoRA '%s': 0 of %d tensors applied -- it does not match ",
                           "this model (different architecture or unsupported ",
                           "naming format). The image was discarded."),
                    basename(p), as.integer(total)), call. = FALSE)
     }
     if (total - skipped > 0 && applied / (total - skipped) < min_share) {
-      stop(sprintf(paste0("LoRA '%s': only %d of %d tensors applied (< %g%%) — it most ",
+      stop(sprintf(paste0("LoRA '%s': only %d of %d tensors applied (< %g%%) -- it most ",
                           "likely targets another architecture with partly matching ",
                           "block names. The image was discarded. Set ",
                           "options(sd2R.lora_min_applied = 0) to accept it."),
