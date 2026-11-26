@@ -23,6 +23,18 @@
 #include "name_conversion.h"
 #include "runtime/imatrix.h"
 
+// convert.o is built without r_ggml_compat.h on Windows (see Makevars.win.in).
+// Detect the compat header by its own include guard: when its redirections are
+// active, printf is already r_ggml_printf; otherwise print through the R API
+// directly (like ggmlR's R_GGML_IO_IMPL files). Checked after all includes.
+#if defined(GGML_R_PACKAGE) && \
+    !(defined(R_GGML_COMPAT_H) && !defined(R_GGML_IO_IMPL))
+#define SD2R_CONVERT_USE_RPRINTF 1
+#include <R_ext/Print.h>
+#else
+#define SD2R_CONVERT_USE_RPRINTF 0
+#endif
+
 struct TensorExportInfo {
     TensorStorage storage;
     ggml_type type;
@@ -326,7 +338,11 @@ static bool stream_tensor_data(ModelLoader& model_loader,
     for (auto& worker : workers) {
         worker.join();
     }
-    r_ggml_printf("\n");
+#if SD2R_CONVERT_USE_RPRINTF
+    Rprintf("\n");
+#else
+    printf("\n");  // with r_ggml_compat.h this is r_ggml_printf -> Rvprintf
+#endif
     if (failed) {
         if (error != nullptr) {
             *error = failure;

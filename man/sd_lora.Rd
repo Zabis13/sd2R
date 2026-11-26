@@ -9,7 +9,7 @@ webui-style tags in the prompt. Both forms can be mixed.
 }
 \details{
 \strong{Explicit:} \code{loras = c("style.safetensors" = 0.8, "detail" = 0.5)}
-— a named numeric vector, names are paths or names, values are weights.
+-- a named numeric vector, names are paths or names, values are weights.
 
 \strong{Prompt tags:} \code{"a cat <lora:style:0.8>"}. Tags are removed from
 the prompt before encoding. The name may contain spaces and colons (e.g.
@@ -49,7 +49,7 @@ generation, so a wrong LoRA costs one full generation.
     slower.}
   \item{\code{IMMEDIATELY}}{the delta is merged into the weights once. For
     quantized weights this is dequantize -> add -> requantize, so part of the
-    (small) LoRA delta is lost to quantization — the usual reason for
+    (small) LoRA delta is lost to quantization -- the usual reason for
     "LoRA looks weaker / worse than expected". Not available for INT8
     tensorwise weights, row-split tensors, or weight types the backend
     cannot write back to (Vulkan: K-quants and most IQ types); then the whole

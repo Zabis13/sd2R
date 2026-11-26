@@ -19,11 +19,20 @@ an \code{"upscale"} node. Pass the result of
 \item{verbose}{Logical. Print progress messages. Default \code{FALSE}.}
 }
 \value{
-The final image (sd_image list), or the path string if the last
-  node is \code{"save"}.
+The output of the last node (for the current node types, an
+  sd_image list).
 }
 \description{
-Executes nodes sequentially. The first node must be \code{"txt2img"}
-(produces an image from nothing). Subsequent nodes receive the previous
-node's image output.
+Executes nodes sequentially. Data passes between nodes through typed
+slots (\code{cond}, \code{uncond}, \code{latent}, \code{image}): each
+node type declares the slots it reads and writes, and reads the most
+recent value written by an earlier node.
+}
+\details{
+The pipeline is validated before any node runs: every slot a node reads
+must have been written by an earlier node, required parameters must be
+set (\code{txt2img} and \code{img2img} need their own \code{prompt}; it is
+not inherited from earlier nodes; \code{save} needs \code{path}), and
+\code{upscale} needs \code{upscaler_ctx}. All problems are reported in one
+error.
 }
