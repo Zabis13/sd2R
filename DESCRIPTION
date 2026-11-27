@@ -66,8 +66,11 @@ Description: Provides Stable Diffusion image generation using the 'ggmlR'
     library, with no 'Python' or external API dependencies. Supports
     text-to-image and image-to-image generation for SD 1.x, SD 2.x, 'SDXL',
     Flux, 'FLUX.2' and 'FLUX.3'. A single sd_generate() function handles the entire pipeline,
-    including sampling and high-resolution output; composable node pipelines
-    (encode, sample, decode) can be saved to and loaded from JSON. Features multi-GPU support,
+    including sampling and high-resolution output; composable node graphs
+    (encode, sample, decode, masks, inpainting, 'ControlNet', image
+    operations) run with result caching and can be saved to and loaded from
+    JSON. Background removal and depth estimation run on 'ggmlR' 'ONNX'
+    models. Features multi-GPU support,
     a 'Shiny' GUI, and runs on CPU or 'Vulkan' GPU across Linux, macOS, and
     Windows.
 SystemRequirements: GNU make, curl or wget (for downloading vocabulary files during installation)

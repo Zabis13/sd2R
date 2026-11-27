@@ -1,6 +1,6 @@
 # sd2R
 
-[![R-hub check on the R Consortium cluster](https://github.com/r-hub2/separate-jaguar-sd2R/actions/workflows/rhub-rc.yaml/badge.svg)](https://github.com/r-hub2/separate-jaguar-sd2R/actions/workflows/rhub-rc.yaml)
+[![R-CMD-check](https://github.com/Zabis13/sd2R/actions/workflows/rhub.yaml/badge.svg)](https://github.com/Zabis13/sd2R/actions/workflows/rhub.yaml)
 
 **sd2R** is an R package that provides a native, GPU-accelerated Stable Diffusion pipeline by wrapping the C++ implementation from [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) and using [ggmlR](https://github.com/Zabis13/ggmlR) as the tensor backend.
 
@@ -38,7 +38,7 @@ R  →  sd2R  →  ggmlR  →  Vulkan  →  GPU
 - **Highres Fix**: classic two-pass pipeline — generates base image at native model resolution, upscales (bilinear or ESRGAN), then refines with tiled img2img at low denoising strength. Produces coherent high-resolution images (2K, 4K+) with global composition preserved.
 - **Image utilities** in R: saving generated images to PNG, converting between internal tensors and R raw vectors, and simple inspection of output tensors.
 - **System introspection** via `sd_system_info()`, reporting GGML/Vulkan capabilities as detected by ggmlR at build time.
-- **Pipeline graph API**: `sd_pipeline()` + `sd_node()` for composable, sequential multi-step workflows (txt2img → upscale → img2img → save, or low-level encode_text → sample → decode). Nodes pass typed slots and the pipeline is validated before running. Pipelines are serializable to JSON via `sd_save_pipeline()` / `sd_load_pipeline()`.
+- **Pipeline graph API**: `sd_pipeline()` + `sd_node()` build a DAG of typed nodes linked by id (txt2img → upscale → img2img, or low-level encode_text → sample → decode, with branching). Validated before running; only nodes needed for the requested `outputs` run; `sd_cache()` reuses unchanged results; `on_event` reports progress. Nodes for masks and inpainting, ControlNet (`canny`, `depth`), background removal, resize / crop / composite. Serializable to JSON via `sd_save_pipeline()` / `sd_load_pipeline()`.
 - **Shiny GUI**: `sd_app()` launches an interactive web interface with auto-detection of model architecture, non-blocking async generation (C++ `std::thread`), live progress bar with ETA, and automatic role assignment for multi-file models (Flux, FLUX.2, FLUX.3, SD3).
 
 ## Shiny GUI
@@ -89,13 +89,24 @@ pipe2 <- sd_pipeline(
   sd_node("save", path = "output2.png")
 )
 
-# Save / load as JSON
-sd_save_pipeline(pipe, "my_pipeline.json")
-pipe <- sd_load_pipeline("my_pipeline.json")
-
 # Run
 ctx <- sd_ctx("model.safetensors")
 sd_run_pipeline(pipe, ctx, upscaler_ctx = upscaler)
+
+# Branching: one text encoding, two seeds; nodes link by id
+pipe3 <- sd_pipeline(
+  sd_node("encode_text", id = "txt", prompt = "a cat in space"),
+  sd_node("sample", id = "a", cond = "txt", seed = 1L),
+  sd_node("sample", id = "b", cond = "txt", seed = 2L),
+  sd_node("decode", id = "img_a", latent = "a"),
+  sd_node("decode", id = "img_b", latent = "b")
+)
+cache <- sd_cache()
+res <- sd_run_pipeline(pipe3, ctx, outputs = c("img_a", "img_b"), cache = cache)
+
+# Save / load as JSON
+sd_save_pipeline(pipe, "my_pipeline.json")
+pipe <- sd_load_pipeline("my_pipeline.json")
 ```
 
 ## Quick Start: Download a Ready-to-Use FLUX 2 Model

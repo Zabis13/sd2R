@@ -319,6 +319,28 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// sd_ctx_has_control_net_cpp
+bool sd_ctx_has_control_net_cpp(SEXP ctx_sexp);
+RcppExport SEXP _sd2R_sd_ctx_has_control_net_cpp(SEXP ctx_sexpSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_ctx_has_control_net_cpp(ctx_sexp));
+    return rcpp_result_gen;
+END_RCPP
+}
+// sd_ctx_is_inpaint_model_cpp
+bool sd_ctx_is_inpaint_model_cpp(SEXP ctx_sexp);
+RcppExport SEXP _sd2R_sd_ctx_is_inpaint_model_cpp(SEXP ctx_sexpSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ctx_sexp(ctx_sexpSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_ctx_is_inpaint_model_cpp(ctx_sexp));
+    return rcpp_result_gen;
+END_RCPP
+}
 // sd_ctx_supports_ref_cpp
 bool sd_ctx_supports_ref_cpp(SEXP ctx_sexp);
 RcppExport SEXP _sd2R_sd_ctx_supports_ref_cpp(SEXP ctx_sexpSEXP) {
@@ -392,8 +414,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // sd_sample_cpp
-SEXP sd_sample_cpp(SEXP ctx_sexp, SEXP init_latent, SEXP noise, Rcpp::List cond, Rcpp::List uncond, int sample_method, int scheduler, int sample_steps, double cfg_scale, double eta, double strength, Rcpp::Nullable<Rcpp::NumericVector> custom_sigmas);
-RcppExport SEXP _sd2R_sd_sample_cpp(SEXP ctx_sexpSEXP, SEXP init_latentSEXP, SEXP noiseSEXP, SEXP condSEXP, SEXP uncondSEXP, SEXP sample_methodSEXP, SEXP schedulerSEXP, SEXP sample_stepsSEXP, SEXP cfg_scaleSEXP, SEXP etaSEXP, SEXP strengthSEXP, SEXP custom_sigmasSEXP) {
+SEXP sd_sample_cpp(SEXP ctx_sexp, SEXP init_latent, SEXP noise, Rcpp::List cond, Rcpp::List uncond, int sample_method, int scheduler, int sample_steps, double cfg_scale, double eta, double strength, Rcpp::Nullable<Rcpp::NumericVector> custom_sigmas, Rcpp::Nullable<Rcpp::List> mask_image, Rcpp::Nullable<Rcpp::List> control_image, double control_strength);
+RcppExport SEXP _sd2R_sd_sample_cpp(SEXP ctx_sexpSEXP, SEXP init_latentSEXP, SEXP noiseSEXP, SEXP condSEXP, SEXP uncondSEXP, SEXP sample_methodSEXP, SEXP schedulerSEXP, SEXP sample_stepsSEXP, SEXP cfg_scaleSEXP, SEXP etaSEXP, SEXP strengthSEXP, SEXP custom_sigmasSEXP, SEXP mask_imageSEXP, SEXP control_imageSEXP, SEXP control_strengthSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -409,7 +431,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type eta(etaSEXP);
     Rcpp::traits::input_parameter< double >::type strength(strengthSEXP);
     Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericVector> >::type custom_sigmas(custom_sigmasSEXP);
-    rcpp_result_gen = Rcpp::wrap(sd_sample_cpp(ctx_sexp, init_latent, noise, cond, uncond, sample_method, scheduler, sample_steps, cfg_scale, eta, strength, custom_sigmas));
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::List> >::type mask_image(mask_imageSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::List> >::type control_image(control_imageSEXP);
+    Rcpp::traits::input_parameter< double >::type control_strength(control_strengthSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_sample_cpp(ctx_sexp, init_latent, noise, cond, uncond, sample_method, scheduler, sample_steps, cfg_scale, eta, strength, custom_sigmas, mask_image, control_image, control_strength));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -509,6 +534,22 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// sd_preprocess_canny_cpp
+Rcpp::List sd_preprocess_canny_cpp(Rcpp::List image, double high_threshold, double low_threshold, double weak, double strong, bool inverse);
+RcppExport SEXP _sd2R_sd_preprocess_canny_cpp(SEXP imageSEXP, SEXP high_thresholdSEXP, SEXP low_thresholdSEXP, SEXP weakSEXP, SEXP strongSEXP, SEXP inverseSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::List >::type image(imageSEXP);
+    Rcpp::traits::input_parameter< double >::type high_threshold(high_thresholdSEXP);
+    Rcpp::traits::input_parameter< double >::type low_threshold(low_thresholdSEXP);
+    Rcpp::traits::input_parameter< double >::type weak(weakSEXP);
+    Rcpp::traits::input_parameter< double >::type strong(strongSEXP);
+    Rcpp::traits::input_parameter< bool >::type inverse(inverseSEXP);
+    rcpp_result_gen = Rcpp::wrap(sd_preprocess_canny_cpp(image, high_threshold, low_threshold, weak, strong, inverse));
+    return rcpp_result_gen;
+END_RCPP
+}
 // sd_create_upscaler
 SEXP sd_create_upscaler(std::string esrgan_path, int n_threads, bool offload_params_to_cpu, bool direct, int tile_size);
 RcppExport SEXP _sd2R_sd_create_upscaler(SEXP esrgan_pathSEXP, SEXP n_threadsSEXP, SEXP offload_params_to_cpuSEXP, SEXP directSEXP, SEXP tile_sizeSEXP) {
@@ -585,13 +626,15 @@ static const R_CallMethodDef CallEntries[] = {
     {"_sd2R_sd_generate_result", (DL_FUNC) &_sd2R_sd_generate_result, 0},
     {"_sd2R_sd_ctx_version_cpp", (DL_FUNC) &_sd2R_sd_ctx_version_cpp, 1},
     {"_sd2R_sd_ctx_latent_info_cpp", (DL_FUNC) &_sd2R_sd_ctx_latent_info_cpp, 1},
+    {"_sd2R_sd_ctx_has_control_net_cpp", (DL_FUNC) &_sd2R_sd_ctx_has_control_net_cpp, 1},
+    {"_sd2R_sd_ctx_is_inpaint_model_cpp", (DL_FUNC) &_sd2R_sd_ctx_is_inpaint_model_cpp, 1},
     {"_sd2R_sd_ctx_supports_ref_cpp", (DL_FUNC) &_sd2R_sd_ctx_supports_ref_cpp, 1},
     {"_sd2R_sd_ctx_lora_apply_mode_cpp", (DL_FUNC) &_sd2R_sd_ctx_lora_apply_mode_cpp, 1},
     {"_sd2R_sd_ctx_lora_stats_cpp", (DL_FUNC) &_sd2R_sd_ctx_lora_stats_cpp, 1},
     {"_sd2R_sd_encode_text_cpp", (DL_FUNC) &_sd2R_sd_encode_text_cpp, 5},
     {"_sd2R_sd_encode_image_cpp", (DL_FUNC) &_sd2R_sd_encode_image_cpp, 2},
     {"_sd2R_sd_decode_latent_cpp", (DL_FUNC) &_sd2R_sd_decode_latent_cpp, 2},
-    {"_sd2R_sd_sample_cpp", (DL_FUNC) &_sd2R_sd_sample_cpp, 12},
+    {"_sd2R_sd_sample_cpp", (DL_FUNC) &_sd2R_sd_sample_cpp, 15},
     {"_sd2R_sd_sampler_sigmas_cpp", (DL_FUNC) &_sd2R_sd_sampler_sigmas_cpp, 6},
     {"_sd2R_sd_sampler_begin_cpp", (DL_FUNC) &_sd2R_sd_sampler_begin_cpp, 1},
     {"_sd2R_sd_sampler_end_cpp", (DL_FUNC) &_sd2R_sd_sampler_end_cpp, 1},
@@ -599,6 +642,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_sd2R_sd_inverse_noise_scale_cpp", (DL_FUNC) &_sd2R_sd_inverse_noise_scale_cpp, 3},
     {"_sd2R_sd_denoise_step_cpp", (DL_FUNC) &_sd2R_sd_denoise_step_cpp, 9},
     {"_sd2R_sd_euler_step_cpp", (DL_FUNC) &_sd2R_sd_euler_step_cpp, 4},
+    {"_sd2R_sd_preprocess_canny_cpp", (DL_FUNC) &_sd2R_sd_preprocess_canny_cpp, 6},
     {"_sd2R_sd_create_upscaler", (DL_FUNC) &_sd2R_sd_create_upscaler, 5},
     {"_sd2R_sd_upscale", (DL_FUNC) &_sd2R_sd_upscale, 3},
     {"_sd2R_sd_convert_model", (DL_FUNC) &_sd2R_sd_convert_model, 6},

@@ -18,7 +18,10 @@ sd_sample(
   cfg_scale = 7,
   eta = 0,
   seed = 42L,
-  custom_sigmas = NULL
+  custom_sigmas = NULL,
+  mask = NULL,
+  control_image = NULL,
+  control_strength = 0.9
 )
 }
 \arguments{
@@ -54,6 +57,20 @@ normal noise of \code{latent_shape} is generated using \code{seed}.}
 \item{seed}{Seed for noise generation when \code{noise} is \code{NULL}}
 
 \item{custom_sigmas}{Optional explicit sigma schedule (overrides scheduler)}
+
+\item{mask}{Optional inpainting mask (needs \code{init_latent}): a PNG
+path, a numeric matrix \code{[H, W]} or a 1-channel SD image, of the
+generation size in pixels (latent size times the VAE scale factor).
+White = regenerate, black = keep. Prepared as in
+\code{\link{sd_img2img}}. Inpainting checkpoints are not supported
+here yet (error); use \code{sd_img2img()} for them.}
+
+\item{control_image}{Optional ControlNet hint image (SD image or PNG
+path) of the generation size in pixels; needs a context created with
+\code{control_net_path}. Alpha is dropped, grayscale expanded to RGB.}
+
+\item{control_strength}{ControlNet strength in \code{[0, 2]} (default
+0.9); used with \code{control_image}.}
 }
 \value{
 An sd_tensor list — the denoised latent x_0. Pass to

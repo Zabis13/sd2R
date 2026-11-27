@@ -79,6 +79,13 @@ sd_remove_background <- function(image, model, output = c("rgba", "mask"),
     stop("`model` must be an sd_rmbg object or a path to the .onnx file",
          call. = FALSE)
   }
+  r <- .rmbg_mask(image, model, threshold)
+  if (output == "mask") return(.rmbg_mask_image(r))
+  .rmbg_rgba_image(r)
+}
+
+# image -> list(rgb = [H, W, 3] in [0, 1], mask = [H, W] in [0, 1])
+.rmbg_mask <- function(image, model, threshold = NULL) {
   if (!is.null(threshold) &&
       (!is.numeric(threshold) || threshold <= 0 || threshold >= 1)) {
     stop("`threshold` must be a number in (0, 1)", call. = FALSE)
@@ -94,13 +101,17 @@ sd_remove_background <- function(image, model, output = c("rgba", "mask"),
   mask <- .resize_array(array(mask, c(dim(mask), 1L)), w, h)[, , 1L]
   mask <- pmin(pmax(mask, 0), 1)
   if (!is.null(threshold)) mask <- (mask >= threshold) * 1
+  list(rgb = rgb, mask = mask)
+}
 
-  if (output == "mask") {
-    return(.array_to_sd_image(array(mask, c(h, w, 1L))))
-  }
-  out <- array(0, c(h, w, 4L))
-  out[, , 1:3] <- rgb
-  out[, , 4] <- mask
+.rmbg_mask_image <- function(r) {
+  .array_to_sd_image(array(r$mask, c(dim(r$mask), 1L)))
+}
+
+.rmbg_rgba_image <- function(r) {
+  out <- array(0, c(dim(r$mask), 4L))
+  out[, , 1:3] <- r$rgb
+  out[, , 4] <- r$mask
   .array_to_sd_image(out)
 }
 

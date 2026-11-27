@@ -121,6 +121,14 @@ sd_ctx_latent_info_cpp <- function(ctx_sexp) {
     .Call(`_sd2R_sd_ctx_latent_info_cpp`, ctx_sexp)
 }
 
+sd_ctx_has_control_net_cpp <- function(ctx_sexp) {
+    .Call(`_sd2R_sd_ctx_has_control_net_cpp`, ctx_sexp)
+}
+
+sd_ctx_is_inpaint_model_cpp <- function(ctx_sexp) {
+    .Call(`_sd2R_sd_ctx_is_inpaint_model_cpp`, ctx_sexp)
+}
+
 sd_ctx_supports_ref_cpp <- function(ctx_sexp) {
     .Call(`_sd2R_sd_ctx_supports_ref_cpp`, ctx_sexp)
 }
@@ -145,8 +153,8 @@ sd_decode_latent_cpp <- function(ctx_sexp, latent) {
     .Call(`_sd2R_sd_decode_latent_cpp`, ctx_sexp, latent)
 }
 
-sd_sample_cpp <- function(ctx_sexp, init_latent, noise, cond, uncond, sample_method, scheduler, sample_steps, cfg_scale, eta, strength, custom_sigmas) {
-    .Call(`_sd2R_sd_sample_cpp`, ctx_sexp, init_latent, noise, cond, uncond, sample_method, scheduler, sample_steps, cfg_scale, eta, strength, custom_sigmas)
+sd_sample_cpp <- function(ctx_sexp, init_latent, noise, cond, uncond, sample_method, scheduler, sample_steps, cfg_scale, eta, strength, custom_sigmas, mask_image, control_image, control_strength) {
+    .Call(`_sd2R_sd_sample_cpp`, ctx_sexp, init_latent, noise, cond, uncond, sample_method, scheduler, sample_steps, cfg_scale, eta, strength, custom_sigmas, mask_image, control_image, control_strength)
 }
 
 sd_sampler_sigmas_cpp <- function(ctx_sexp, scheduler, sample_method, sample_steps, width, height) {
@@ -175,6 +183,10 @@ sd_denoise_step_cpp <- function(ctx_sexp, x_in, sigma, cond, uncond, cfg_scale, 
 
 sd_euler_step_cpp <- function(x_in, den_in, sigma, sigma_next) {
     .Call(`_sd2R_sd_euler_step_cpp`, x_in, den_in, sigma, sigma_next)
+}
+
+sd_preprocess_canny_cpp <- function(image, high_threshold, low_threshold, weak, strong, inverse) {
+    .Call(`_sd2R_sd_preprocess_canny_cpp`, image, high_threshold, low_threshold, weak, strong, inverse)
 }
 
 sd_create_upscaler <- function(esrgan_path, n_threads = 0L, offload_params_to_cpu = FALSE, direct = FALSE, tile_size = 0L) {

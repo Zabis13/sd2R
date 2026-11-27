@@ -63,6 +63,12 @@ namespace {
             --n_dims;
         }
         std::vector<int64_t> shape(t->ne, t->ne + n_dims);
+        // The core keeps the batch as the last axis (latent [W, H, C, 1],
+        // crossattn [D, T, 1]) and batches cond/uncond for CFG along it;
+        // trimming it would batch along channels / tokens instead.
+        if (n_dims < 4) {
+            shape.push_back(1);
+        }
         sd::Tensor<float> out(shape);
         memcpy(out.data(), t->data, std::min(static_cast<size_t>(t->nbytes), static_cast<size_t>(out.numel()) * sizeof(float)));
         return out;
@@ -377,6 +383,24 @@ SD_API sd_tensor sd_encode_image(sd_ctx_t* sd_ctx, sd_image_t image) {
     });
 }
 
+SD_API void sd2r_sample_extra_init(sd2r_sample_extra_t* extra) {
+    if (extra == nullptr) {
+        return;
+    }
+    memset(extra, 0, sizeof(*extra));
+    extra->struct_size      = sizeof(*extra);
+    extra->control_strength = 0.9f;
+}
+
+SD_API bool sd_ctx_control_net_configured(const sd_ctx_t* sd_ctx) {
+    return sd_ctx != nullptr && sd_ctx->sd != nullptr && sd_ctx->sd->config_ != nullptr &&
+           sd_ctx->sd->config_->control_net_file != 0;
+}
+
+SD_API bool sd_ctx_is_inpaint_model(const sd_ctx_t* sd_ctx) {
+    return sd_ctx != nullptr && sd_ctx->sd != nullptr && sd_version_is_inpaint(sd_ctx->sd->version);
+}
+
 SD_API sd_tensor sd_sample_loop(sd_ctx_t* sd_ctx,
                                 sd_tensor init_latent,
                                 sd_tensor noise,
@@ -384,9 +408,27 @@ SD_API sd_tensor sd_sample_loop(sd_ctx_t* sd_ctx,
                                 sd_cond uncond,
                                 const sd_sample_params_t* sample_params,
                                 float strength) {
+    return sd_sample_loop_ex(sd_ctx, init_latent, noise, cond, uncond, sample_params, strength, nullptr);
+}
+
+SD_API sd_tensor sd_sample_loop_ex(sd_ctx_t* sd_ctx,
+                                   sd_tensor init_latent,
+                                   sd_tensor noise,
+                                   sd_cond cond,
+                                   sd_cond uncond,
+                                   const sd_sample_params_t* sample_params,
+                                   float strength,
+                                   const sd2r_sample_extra_t* extra) {
     if (sd_ctx == nullptr || sd_ctx->sd == nullptr ||
         sample_params == nullptr || noise.data == nullptr) {
         return sd_tensor_empty();
+    }
+    // read only the fields the caller knows about (struct_size), rest default
+    sd2r_sample_extra_t ex;
+    sd2r_sample_extra_init(&ex);
+    if (extra != nullptr && extra->struct_size > 0) {
+        memcpy(&ex, extra, std::min(extra->struct_size, sizeof(ex)));
+        ex.struct_size = sizeof(ex);
     }
     return sd2r_run_scoped(sd_ctx, sd_tensor_empty(), [&]() {
         StableDiffusionGGML* sd   = sd_ctx->sd;
@@ -398,6 +440,46 @@ SD_API sd_tensor sd_sample_loop(sd_ctx_t* sd_ctx,
         }
         int W = static_cast<int>(noise_t.shape()[0]);
         int H = static_cast<int>(noise_t.shape()[1]);
+
+        // optional mask / ControlNet: prepared as in image generation
+        // (pipeline/image.cpp), so results match sd_img2img / txt2img
+        const int vsf = sd->get_vae_scale_factor();
+        sd::Tensor<float> denoise_mask;
+        sd::Tensor<float> control_t;
+        float control_strength = 0.0f;
+        if (ex.mask_image.data != nullptr) {
+            if (!is_img2img) {
+                LOG_ERROR("sd_sample_loop_ex: a mask needs an init latent");
+                return sd_tensor_empty();
+            }
+            if (sd_version_is_inpaint(sd->version)) {
+                LOG_ERROR("sd_sample_loop_ex: inpainting checkpoints are not supported with a mask yet");
+                return sd_tensor_empty();
+            }
+            if (static_cast<int>(ex.mask_image.width) != W * vsf ||
+                static_cast<int>(ex.mask_image.height) != H * vsf) {
+                LOG_ERROR("sd_sample_loop_ex: mask is %dx%d, expected %dx%d",
+                          (int)ex.mask_image.width, (int)ex.mask_image.height, W * vsf, H * vsf);
+                return sd_tensor_empty();
+            }
+            sd::Tensor<float> mask_px = sd::ops::round(sd_image_to_tensor(ex.mask_image, W * vsf, H * vsf));
+            denoise_mask              = sd::ops::interpolate(mask_px, {W, H, 1, 1},
+                                                             sd::ops::InterpolateMode::NearestMax);
+        }
+        if (ex.control_image.data != nullptr) {
+            if (!sd_ctx_control_net_configured(sd_ctx)) {
+                LOG_ERROR("sd_sample_loop_ex: control image given, but no ControlNet is loaded");
+                return sd_tensor_empty();
+            }
+            if (static_cast<int>(ex.control_image.width) != W * vsf ||
+                static_cast<int>(ex.control_image.height) != H * vsf) {
+                LOG_ERROR("sd_sample_loop_ex: control image is %dx%d, expected %dx%d",
+                          (int)ex.control_image.width, (int)ex.control_image.height, W * vsf, H * vsf);
+                return sd_tensor_empty();
+            }
+            control_t        = sd_image_to_tensor(ex.control_image, W * vsf, H * vsf);
+            control_strength = ex.control_strength;
+        }
 
         SDCondition c  = sd_cond_to_condition(cond);
         SDCondition uc = sd_cond_to_condition(uncond);
@@ -438,8 +520,8 @@ SD_API sd_tensor sd_sample_loop(sd_ctx_t* sd_ctx,
                                            c,
                                            uc,
                                            SDCondition(),               // img_uncond
-                                           sd::Tensor<float>(),         // control_image
-                                           0.0f,                        // control_strength
+                                           control_t,                   // control_image
+                                           control_strength,            // control_strength
                                            sample_params->guidance,
                                            sample_params->eta,
                                            sample_params->shifted_timestep,
@@ -449,7 +531,7 @@ SD_API sd_tensor sd_sample_loop(sd_ctx_t* sd_ctx,
                                            sigmas,
                                            {},                          // ref_latents
                                            sd->resolve_ref_image_params(""),
-                                           sd::Tensor<float>(),         // denoise_mask
+                                           denoise_mask,                // denoise_mask
                                            sd::Tensor<float>(),         // vace_context
                                            1.0f,                        // vace_strength
                                            0,                           // audio_length

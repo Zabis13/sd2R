@@ -81,6 +81,17 @@ sd_decode_latent <- function(ctx, latent) {
 #' @param eta Eta for DDIM-like samplers
 #' @param seed Seed for noise generation when \code{noise} is \code{NULL}
 #' @param custom_sigmas Optional explicit sigma schedule (overrides scheduler)
+#' @param mask Optional inpainting mask (needs \code{init_latent}): a PNG
+#'   path, a numeric matrix \code{[H, W]} or a 1-channel SD image, of the
+#'   generation size in pixels (latent size times the VAE scale factor).
+#'   White = regenerate, black = keep. Prepared as in
+#'   \code{\link{sd_img2img}}. Inpainting checkpoints are not supported
+#'   here yet (error); use \code{sd_img2img()} for them.
+#' @param control_image Optional ControlNet hint image (SD image or PNG
+#'   path) of the generation size in pixels; needs a context created with
+#'   \code{control_net_path}. Alpha is dropped, grayscale expanded to RGB.
+#' @param control_strength ControlNet strength in \code{[0, 2]} (default
+#'   0.9); used with \code{control_image}.
 #' @return An sd_tensor list — the denoised latent x_0. Pass to
 #'   \code{\link{sd_decode_latent}}.
 #' @export
@@ -91,7 +102,9 @@ sd_sample <- function(ctx, cond, uncond = list(crossattn = NULL, vector = NULL, 
                       sample_method = SAMPLE_METHOD$EULER,
                       scheduler = SCHEDULER$DISCRETE,
                       sample_steps = 20L, cfg_scale = 7.0, eta = 0.0,
-                      seed = 42L, custom_sigmas = NULL) {
+                      seed = 42L, custom_sigmas = NULL,
+                      mask = NULL, control_image = NULL,
+                      control_strength = 0.9) {
   if (is.character(sample_method)) {
     sm <- SAMPLE_METHOD[[sample_method]]
     if (is.null(sm)) stop("Unknown sample_method: ", sample_method, call. = FALSE)
@@ -117,11 +130,72 @@ sd_sample <- function(ctx, cond, uncond = list(crossattn = NULL, vector = NULL, 
     )
   }
 
-  sd_sample_cpp(ctx, init_latent, noise, cond, uncond,
-                as.integer(sample_method), as.integer(scheduler),
-                as.integer(sample_steps), as.numeric(cfg_scale),
-                as.numeric(eta), as.numeric(strength),
-                if (is.null(custom_sigmas)) NULL else as.numeric(custom_sigmas))
+  extra <- .sample_extra_inputs(ctx, noise, init_latent, mask, control_image,
+                                control_strength)
+
+  out <- sd_sample_cpp(ctx, init_latent, noise, cond, uncond,
+                       as.integer(sample_method), as.integer(scheduler),
+                       as.integer(sample_steps), as.numeric(cfg_scale),
+                       as.numeric(eta), as.numeric(strength),
+                       if (is.null(custom_sigmas)) NULL else as.numeric(custom_sigmas),
+                       extra$mask, extra$control, as.numeric(control_strength))
+  if (is.null(out)) {
+    stop("sd_sample: sampling failed (see the log with verbose = TRUE in sd_ctx())",
+         call. = FALSE)
+  }
+  out
+}
+
+# Checks and converts the optional mask / control inputs of sd_sample, so
+# problems are reported before sampling starts (the C++ side checks again).
+.sample_extra_inputs <- function(ctx, noise, init_latent, mask, control_image,
+                                 control_strength) {
+  if (is.null(mask) && is.null(control_image)) {
+    return(list(mask = NULL, control = NULL))
+  }
+  info <- sd_ctx_latent_info_cpp(ctx)
+  vsf <- info[1L]
+  w <- noise$ne[1L] * vsf; h <- noise$ne[2L] * vsf
+  size_err <- function(what, img) {
+    stop(sprintf(paste0("sd_sample: %s is %dx%d, the generation is %dx%d; ",
+                        "resize it first ('resize' / 'resize_mask' nodes)"),
+                 what, img$width, img$height, w, h), call. = FALSE)
+  }
+  m <- NULL
+  if (!is.null(mask)) {
+    if (is.null(init_latent)) {
+      stop("sd_sample: 'mask' needs 'init_latent' (inpainting is img2img)",
+           call. = FALSE)
+    }
+    if (sd_ctx_is_inpaint_model_cpp(ctx)) {
+      stop(paste0("sd_sample: inpainting checkpoints are not supported with ",
+                  "'mask' in the low-level sampler yet; use sd_img2img(mask = )"),
+           call. = FALSE)
+    }
+    m <- .sd_to_mask_image(mask)
+    if (m$width != w || m$height != h) size_err("mask", m)
+  }
+  ci <- NULL
+  if (!is.null(control_image)) {
+    if (!is.numeric(control_strength) || length(control_strength) != 1L ||
+        is.na(control_strength) || control_strength < 0 || control_strength > 2) {
+      stop("sd_sample: 'control_strength' must be a number in [0, 2]",
+           call. = FALSE)
+    }
+    if (!sd_ctx_has_control_net_cpp(ctx)) {
+      stop(paste0("sd_sample: 'control_image' given, but the context has no ",
+                  "ControlNet (create it with sd_ctx(control_net_path = ))"),
+           call. = FALSE)
+    }
+    ci <- if (is.character(control_image)) sd_load_image(control_image) else control_image
+    if (ci$width != w || ci$height != h) size_err("control image", ci)
+    if (ci$channel != 3L) {
+      a <- sd_image_to_array(ci)
+      if (dim(a)[3] < 3L) a <- a[, , rep(1L, 3L), drop = FALSE]
+      ci <- .array_to_sd_image(a[, , 1:3, drop = FALSE])
+    }
+  }
+  list(mask = m, control = ci)
 }
 
 # ===========================================================================

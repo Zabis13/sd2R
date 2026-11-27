@@ -1,4 +1,5 @@
 // sd2R: Rcpp bridge for the low-level step-wise API (sd/sd2r_lowlevel.inc).
+#include <algorithm>
 #include <cstdlib>
 #include <vector>
 
@@ -94,6 +95,18 @@ Rcpp::IntegerVector sd_ctx_latent_info_cpp(SEXP ctx_sexp) {
 }
 
 // [[Rcpp::export]]
+bool sd_ctx_has_control_net_cpp(SEXP ctx_sexp) {
+    SdCtxXPtr xptr(ctx_sexp);
+    return xptr.get() != nullptr && sd_ctx_control_net_configured(xptr.get());
+}
+
+// [[Rcpp::export]]
+bool sd_ctx_is_inpaint_model_cpp(SEXP ctx_sexp) {
+    SdCtxXPtr xptr(ctx_sexp);
+    return xptr.get() != nullptr && sd_ctx_is_inpaint_model(xptr.get());
+}
+
+// [[Rcpp::export]]
 bool sd_ctx_supports_ref_cpp(SEXP ctx_sexp) {
     SdCtxXPtr xptr(ctx_sexp);
     if (!xptr.get()) return false;
@@ -167,7 +180,10 @@ SEXP sd_sample_cpp(SEXP ctx_sexp, SEXP init_latent, SEXP noise,
                    Rcpp::List cond, Rcpp::List uncond,
                    int sample_method, int scheduler, int sample_steps,
                    double cfg_scale, double eta, double strength,
-                   Rcpp::Nullable<Rcpp::NumericVector> custom_sigmas) {
+                   Rcpp::Nullable<Rcpp::NumericVector> custom_sigmas,
+                   Rcpp::Nullable<Rcpp::List> mask_image,
+                   Rcpp::Nullable<Rcpp::List> control_image,
+                   double control_strength) {
     SdCtxXPtr xptr(ctx_sexp);
     if (!xptr.get()) Rcpp::stop("Invalid sd_ctx (NULL pointer)");
 
@@ -191,7 +207,19 @@ SEXP sd_sample_cpp(SEXP ctx_sexp, SEXP init_latent, SEXP noise,
         sp.custom_sigmas_count = (int)sig.size();
     }
 
-    sd_tensor x0 = sd_sample_loop(xptr.get(), init_t, noise_t, c, uc, &sp, (float)strength);
+    // images point into the R raw vectors, alive for the whole call
+    sd2r_sample_extra_t extra;
+    sd2r_sample_extra_init(&extra);
+    if (mask_image.isNotNull()) {
+        extra.mask_image = r_to_sd_image(Rcpp::List(mask_image));
+    }
+    if (control_image.isNotNull()) {
+        extra.control_image    = r_to_sd_image(Rcpp::List(control_image));
+        extra.control_strength = (float)control_strength;
+    }
+
+    sd_tensor x0 = sd_sample_loop_ex(xptr.get(), init_t, noise_t, c, uc, &sp,
+                                     (float)strength, &extra);
     SEXP out = sd_tensor_to_r(x0);
 
     sd_tensor_free(&init_t);
@@ -300,4 +328,29 @@ SEXP sd_euler_step_cpp(SEXP x_in, SEXP den_in, double sigma, double sigma_next) 
         Rcpp::stop("sd_euler_step failed: x and denoised must be non-empty and of equal size");
     }
     return out;
+}
+
+// --- ControlNet preprocessing ----------------------------------------------
+
+// Canny edges via the core's preprocess_canny (as sd.cpp --canny). It works
+// in place, so the R image data is copied first.
+// [[Rcpp::export]]
+Rcpp::List sd_preprocess_canny_cpp(Rcpp::List image, double high_threshold,
+                                   double low_threshold, double weak,
+                                   double strong, bool inverse) {
+    sd_image_t src = r_to_sd_image(image);
+    size_t n = (size_t)src.width * src.height * src.channel;
+    Rcpp::RawVector out(n);
+    std::copy(src.data, src.data + n, out.begin());
+    sd_image_t img = src;
+    img.data = (uint8_t*)&out[0];
+    if (!preprocess_canny(img, (float)high_threshold, (float)low_threshold,
+                          (float)weak, (float)strong, inverse)) {
+        Rcpp::stop("preprocess_canny failed");
+    }
+    return Rcpp::List::create(
+        Rcpp::Named("width")   = (int)img.width,
+        Rcpp::Named("height")  = (int)img.height,
+        Rcpp::Named("channel") = (int)img.channel,
+        Rcpp::Named("data")    = out);
 }

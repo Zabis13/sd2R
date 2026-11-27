@@ -4,18 +4,35 @@
 \alias{sd_node}
 \title{Create a pipeline node}
 \usage{
-sd_node(type, ...)
+sd_node(type, ..., id = NULL)
 }
 \arguments{
-\item{type}{Node type. High-level: \code{"txt2img"}, \code{"img2img"},
+\item{type}{Node type. High-level: \code{"txt2img"}, \code{"img2img"}
+(\code{image} [+ \code{mask}] -> \code{image}; with a mask it inpaints),
 \code{"upscale"}, \code{"save"}, \code{"remove_background"}
-(\code{image -> image}; params \code{model_path} (required),
+(\code{image -> mask, image}; params \code{model_path} (required),
 \code{device}, \code{output}, \code{threshold}; see
-\code{\link{sd_remove_background}}). Low-level (see Details):
+\code{\link{sd_remove_background}}). Masks: \code{"load_mask"},
+\code{"invert_mask"}, \code{"save_mask"}. Image operations:
+\code{"resize"}, \code{"resize_mask"}, \code{"crop"},
+\code{"crop_mask"}, \code{"composite"}. ControlNet preprocessors
+(\code{image -> image}): \code{"canny"} (params of
+\code{\link{sd_canny}}), \code{"depth"} (\code{model_path}
+required, \code{device}, \code{size}; see
+\code{\link{sd_estimate_depth}}); their output goes to the
+\code{control} input of \code{txt2img} or \code{sample} (linked
+explicitly; needs a context with \code{control_net_path}; strength via
+\code{control_strength}) (see Details). Low-level:
 \code{"encode_text"}, \code{"load_image"}, \code{"encode_image"},
-\code{"sample"}, \code{"decode"}.}
+\code{"sample"}, \code{"decode"}, \code{"upscale_latent"}.}
 
-\item{...}{Parameters for the node (passed to the corresponding function).}
+\item{...}{Parameters for the node (passed to the corresponding function).
+Arguments named after one of the node's inputs (\code{cond},
+\code{uncond}, \code{latent}, \code{image}) are links to earlier nodes:
+\code{"id"} or \code{"id$output"} (see \code{\link{sd_run_pipeline}}).}
+
+\item{id}{Optional node id, used to link other nodes to this one. Assigned
+automatically by \code{\link{sd_pipeline}} if omitted.}
 }
 \value{
 A list with class \code{"sd_node"}.
@@ -42,9 +59,96 @@ Slots read -> written, and parameters of the low-level nodes:
     both read from the model; \code{width}/\code{height} default to 512,
     and \code{vae_scale_factor}, \code{latent_channels} or a full
     \code{latent_shape} can be given to override. With an input latent
-    (img2img) its shape is used; set \code{strength} below 1.}
+    (img2img) its shape is used; set \code{strength} below 1.
+    Optional inputs, linked explicitly only (never the nearest node):
+    \code{mask} (inpainting; needs \code{latent}; not for inpainting
+    checkpoints yet) and \code{control} (an image: ControlNet hint; needs
+    a context with \code{control_net_path}, checked before the run;
+    strength via \code{control_strength}, in [0, 2], default 0.9). Both
+    must have the generation size in pixels (else an error: use
+    \code{resize} / \code{resize_mask}).}
   \item{decode}{\code{latent} -> \code{image}; see
     \code{\link{sd_decode_latent}}.}
+  \item{upscale_latent}{\code{latent} -> \code{latent}, resized in latent
+    space: \code{scale}, or \code{width} and \code{height} in pixels
+    (multiples of the VAE scale factor); \code{method} as for
+    \code{resize}. Only plain 4- or 16-channel latents (SD1/2/XL,
+    SD3/FLUX.1); FLUX.2/3 latents pack 2x2 sub-pixels into 128 channels
+    and are refused. A quick option: re-sample with a high
+    \code{strength} (about 0.5-0.7), and expect lower quality than
+    upscaling the image.}
+}
+
+Highres fix: generate at the model's native size, upscale, then refine
+with img2img. Upscaling the image works for every model and gives the
+best quality (use an \code{"upscale"} node with ESRGAN instead of
+\code{"resize"} for sharper detail):
+\preformatted{
+sd_pipeline(
+  sd_node("encode_text", id = "txt", prompt = "a castle",
+          width = 1024L, height = 1024L),
+  sd_node("sample", id = "base", cond = "txt", width = 512L, height = 512L),
+  sd_node("decode", id = "small", latent = "base"),
+  sd_node("resize", id = "big", image = "small", width = 1024L),
+  sd_node("encode_image", id = "init", image = "big"),
+  sd_node("sample", id = "hr", cond = "txt", latent = "init",
+          strength = 0.45),
+  sd_node("decode", latent = "hr"),
+  sd_node("save", path = "castle.png")
+)
+}
+For plain latents, \code{decode -> resize -> encode_image} can be replaced
+by \code{sd_node("upscale_latent", latent = "base", scale = 2)} (skips the
+VAE round trip; use a higher strength).
+
+Run-time inputs: \code{"input_image"}, \code{"input_mask"},
+\code{"input_latent"} (no parameters) output the value given for their
+id in \code{sd_run_pipeline(inputs = )}; the graph (and its JSON) holds
+no data. Used by \code{\link{sd_run_batch}} and \code{\link{sd_loopback}}.
+
+Masks are a separate type from images: a 1-channel image with values
+0..255 ([0, 1] in R), white = regenerate, black = keep the original. A
+mask input accepts only a mask output, and only as a link to a node (not
+a file path).
+\describe{
+  \item{load_mask}{-> \code{mask}. \code{path} (required); see
+    \code{\link{sd_load_mask}}.}
+  \item{invert_mask}{\code{mask} -> \code{mask} (white <-> black).}
+  \item{save_mask}{\code{mask} -> \code{mask} (pass-through, always
+    runs). \code{path} (required).}
+  \item{remove_background}{\code{image} -> \code{mask} (foreground is
+    white), \code{image} (RGBA, or the mask if \code{output = "mask"}).}
+}
+Image operations (pure R, run on the CPU):
+\describe{
+  \item{resize, resize_mask}{\code{image -> image} / \code{mask -> mask}.
+    \code{width} and/or \code{height} (a missing side keeps the aspect
+    ratio) or \code{scale} (not both); the size is rounded to the nearest
+    integer. \code{method}: \code{"bilinear"} (default, also for masks:
+    keeps soft edges) or \code{"nearest"} (for binary masks).}
+  \item{crop, crop_mask}{\code{image -> image} / \code{mask -> mask}.
+    \code{x}, \code{y} (0-based offsets of the top-left corner, default
+    0), \code{width}, \code{height} (required). A region outside the
+    input is an error.}
+  \item{composite}{\code{fg}, \code{bg} (images), \code{mask} ->
+    \code{image}: \code{fg * mask + bg * (1 - mask)}. All three inputs
+    must be linked explicitly (no nearest-node default, so fg and bg cannot
+    be swapped silently) and have the same size (else an error: use
+    \code{resize} / \code{resize_mask}). fg and bg are used as RGB: an
+    alpha channel is ignored, grayscale is expanded. The result has 3
+    channels.}
+}
+To replace the background, invert the foreground mask and inpaint:
+\preformatted{
+sd_pipeline(
+  sd_node("load_image", id = "src", path = "photo.png"),
+  sd_node("remove_background", id = "bg", image = "src",
+          model_path = "RMBG-1.4.onnx"),
+  sd_node("invert_mask", id = "back", mask = "bg$mask"),
+  sd_node("img2img", image = "src", mask = "back",
+          prompt = "on a beach", strength = 0.9),
+  sd_node("save", path = "beach.png")
+)
 }
 }
 \examples{

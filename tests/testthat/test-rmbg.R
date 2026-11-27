@@ -79,7 +79,7 @@ test_that("threshold binarizes the mask", {
 test_that("accepts a PNG path and rejects a bad model", {
   mock_red_mask()
   tmp <- tempfile(fileext = ".png")
-  on.exit(unlink(tmp))
+  on.exit(unlink(tmp), add = TRUE)
   sd_save_image(top_red_image(), tmp)
   out <- sd_remove_background(tmp, fake_rmbg(), output = "mask")
   expect_equal(out$channel, 1L)
@@ -97,12 +97,28 @@ test_that("remove_background graph node runs and is validated", {
   mock_red_mask()
   local_mocked_bindings(.rmbg_cached = function(path, device = NULL) fake_rmbg())
   tmp <- tempfile(fileext = ".png")
-  on.exit(unlink(tmp))
+  on.exit(unlink(tmp), add = TRUE)
   sd_save_image(top_red_image(), tmp)
   pipe <- sd_pipeline(sd_node("load_image", path = tmp),
                       sd_node("remove_background", model_path = "rmbg.onnx"))
   out <- sd_run_pipeline(pipe, ctx = NULL)
   expect_equal(out$channel, 4L)
+
+  # both outputs from one model run; same as the direct function
+  both <- sd_pipeline(sd_node("load_image", path = tmp),
+                      sd_node("remove_background", id = "bg",
+                              model_path = "rmbg.onnx", threshold = 0.5))
+  res <- sd_run_pipeline(both, ctx = NULL, outputs = "bg")
+  expect_identical(res$bg$mask,
+                   sd_remove_background(tmp, fake_rmbg(), output = "mask",
+                                        threshold = 0.5))
+  expect_identical(res$bg$image,
+                   sd_remove_background(tmp, fake_rmbg(), threshold = 0.5))
+  # output = "mask": the image output is the mask too (compatibility)
+  m_only <- sd_pipeline(sd_node("load_image", path = tmp),
+                        sd_node("remove_background", model_path = "rmbg.onnx",
+                                output = "mask"))
+  expect_equal(sd_run_pipeline(m_only, ctx = NULL)$channel, 1L)
 
   bad <- sd_pipeline(sd_node("remove_background"))
   err <- tryCatch(sd_run_pipeline(bad, ctx = NULL), error = conditionMessage)

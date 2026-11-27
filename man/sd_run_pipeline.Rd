@@ -4,7 +4,16 @@
 \alias{sd_run_pipeline}
 \title{Run a pipeline}
 \usage{
-sd_run_pipeline(pipeline, ctx, upscaler_ctx = NULL, verbose = FALSE)
+sd_run_pipeline(
+  pipeline,
+  ctx,
+  upscaler_ctx = NULL,
+  outputs = NULL,
+  cache = NULL,
+  on_event = NULL,
+  verbose = FALSE,
+  inputs = NULL
+)
 }
 \arguments{
 \item{pipeline}{An \code{sd_pipeline} object.}
@@ -16,23 +25,81 @@ sd_run_pipeline(pipeline, ctx, upscaler_ctx = NULL, verbose = FALSE)
 an \code{"upscale"} node. Pass the result of
 \code{sd_create_upscaler(path)}.}
 
-\item{verbose}{Logical. Print progress messages. Default \code{FALSE}.}
+\item{outputs}{Which results to return. \code{NULL} (default): the last
+output of the last node, as a single value. A character vector of node
+ids: a named list with one element per id. \code{"all"}: every node
+(all results are kept in R memory until the end).}
+
+\item{cache}{Optional \code{\link{sd_cache}} object. Nodes whose type,
+parameters and inputs are unchanged since an earlier run with the same
+cache return the stored result instead of running (see
+\code{\link{sd_cache}} for what is cached). \code{NULL} (default): no
+caching.}
+
+\item{on_event}{Optional function called with one argument, an event
+list, as the run progresses (see Events). It only observes: its return
+value is ignored. An error in it stops the run, naming the handler's
+node and event; call \code{\link{sd_pipeline_cancel}} from it to stop
+the run as a cancel.}
+
+\item{verbose}{Logical. Print progress messages (via \code{message()},
+built on the same events). Default \code{FALSE}.}
+
+\item{inputs}{Values for the run-time input nodes (\code{input_image},
+\code{input_mask}, \code{input_latent}), a list named by node id. Every
+input node needs a value of its type; unknown ids are an error. Checked
+before anything runs.}
 }
 \value{
-The output of the last node (for the current node types, an
-  sd_image list).
+With \code{outputs = NULL}, the last output of the last node (for
+  the current node types, an sd_image list). Otherwise a list named by
+  node id: for a node with one output, the value itself; for several
+  (\code{encode_text}), a list of them (\code{res$txt$cond}).
 }
 \description{
-Executes nodes sequentially. Data passes between nodes through typed
-slots (\code{cond}, \code{uncond}, \code{latent}, \code{image}): each
-node type declares the slots it reads and writes, and reads the most
-recent value written by an earlier node.
+Executes nodes in order. Data passes between nodes through typed outputs
+(\code{cond}, \code{uncond}, \code{latent}, \code{image}): each node type
+declares the inputs it reads and the outputs it writes. An input is
+linked to an earlier node by id (\code{"id"}, or \code{"id$output"} to
+pick a specific output); without a link it reads the nearest earlier node
+that produces it. With \code{"id"} alone, the output with the same name
+as the input is used, or else the only output of a matching type
+(\code{cond} and \code{uncond} are the same type).
 }
 \details{
-The pipeline is validated before any node runs: every slot a node reads
-must have been written by an earlier node, required parameters must be
+The pipeline is validated before any node runs: every input must resolve
+to an earlier node with a matching output, required parameters must be
 set (\code{txt2img} and \code{img2img} need their own \code{prompt}; it is
 not inherited from earlier nodes; \code{save} needs \code{path}), and
 \code{upscale} needs \code{upscaler_ctx}. All problems are reported in one
 error.
+
+Only the nodes needed for the requested outputs run, plus \code{save}
+nodes (side effects) and everything they depend on; other nodes are
+skipped. Intermediate results are released as soon as their last
+consumer has run, unless requested in \code{outputs}.
 }
+\section{Events}{
+
+Events, in order: \code{"skipped"} for every node removed by culling
+(before anything runs), then per node to run either \code{"cached"}
+(result taken from \code{cache}), or \code{"start"} followed by
+\code{"end"} or \code{"error"} (the error is then re-raised). Fields:
+\describe{
+  \item{schema}{Event format version, currently \code{1L}. New fields
+    may be added within a version; existing ones are not renamed.}
+  \item{event}{One of the event names above.}
+  \item{id, type, index}{Node id, type and position in the pipeline.}
+  \item{step, total}{Position among the nodes that run (\code{NA} for
+    \code{"skipped"}) and their number.}
+  \item{elapsed}{Seconds the node took (\code{"end"}, \code{"error"};
+    \code{0} for \code{"cached"}; \code{NA} otherwise), measured with
+    \code{proc.time()} (wall clock, not guaranteed monotonic).}
+  \item{outputs}{For \code{"end"} and \code{"cached"}: per output, its
+    metadata only (\code{class}, size: \code{width}/\code{height}/
+    \code{channel} or \code{ne}, \code{bytes}), never the value; get
+    values with \code{outputs}.}
+  \item{error}{For \code{"error"}: the error message.}
+}
+}
+

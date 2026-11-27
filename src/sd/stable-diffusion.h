@@ -695,6 +695,38 @@ SD_API sd_tensor sd_sample_loop(sd_ctx_t* sd_ctx,
                                 sd_cond uncond,
                                 const sd_sample_params_t* sample_params,
                                 float strength);
+// Optional inputs of sd_sample_loop_ex. Extensible: struct_size must be set
+// (sd2r_sample_extra_init does it); fields are only added at the end, and
+// the callee reads only the fields that fit in struct_size. Zero/NULL means
+// "not used". The struct does not own any memory: images are read during
+// the call only.
+typedef struct {
+    size_t struct_size;        // sizeof(sd2r_sample_extra_t) of the caller
+    sd_image_t mask_image;     // inpaint mask, pixel size = latent * VAE scale
+                               // factor; white = regenerate. data NULL: none.
+                               // Needs an init latent; not for inpaint models.
+    sd_image_t control_image;  // ControlNet hint, same pixel size. data NULL:
+                               // none. Needs a ControlNet in the context.
+    float control_strength;    // ControlNet strength (used with control_image)
+} sd2r_sample_extra_t;
+
+SD_API void sd2r_sample_extra_init(sd2r_sample_extra_t* extra);
+// sd_sample_loop with optional mask / ControlNet inputs (extra may be NULL).
+// Returns an empty tensor (data == NULL) on invalid input.
+SD_API sd_tensor sd_sample_loop_ex(sd_ctx_t* sd_ctx,
+                                   sd_tensor init_latent,
+                                   sd_tensor noise,
+                                   sd_cond cond,
+                                   sd_cond uncond,
+                                   const sd_sample_params_t* sample_params,
+                                   float strength,
+                                   const sd2r_sample_extra_t* extra);
+// True if the context was created with a ControlNet model (by configuration;
+// sd_ctx_has_control_net checks the built runner, which is created lazily).
+SD_API bool sd_ctx_control_net_configured(const sd_ctx_t* sd_ctx);
+// True for inpainting checkpoints (need concat conditioning, not supported
+// by the low-level sampler yet).
+SD_API bool sd_ctx_is_inpaint_model(const sd_ctx_t* sd_ctx);
 SD_API void sd_tensor_free(sd_tensor* t);
 SD_API void sd_cond_free(sd_cond* c);
 SD_API float* sd_sampler_sigmas(sd_ctx_t* sd_ctx,

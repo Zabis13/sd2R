@@ -13,6 +13,11 @@ sd_pipeline(...)
 A list with class \code{"sd_pipeline"}.
 }
 \description{
-Nodes are executed sequentially. The image output of each node is passed
-as input to the next node.
+Nodes run in the given order. Each input of a node is either linked
+explicitly to an earlier node (\code{sd_node("decode", latent = "s1")})
+or, if not given, taken from the nearest earlier node that produces it.
+}
+\details{
+Nodes without an \code{id} get one automatically
+(\code{"<type>_<position>"}). Ids must be unique.
 }

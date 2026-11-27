@@ -1,6 +1,14 @@
 # sd2R 0.2.3
 
 * Pipeline graph: typed slots (`cond`, `uncond`, `latent`, `image`) validated before running; new low-level nodes `encode_text`, `load_image`, `encode_image`, `sample`, `decode`.
+* Pipeline graph is a DAG: nodes link by id (`latent = "s1"`, `"txt$uncond"`); `sd_run_pipeline(outputs = )` returns chosen results, skips unneeded nodes and frees results early.
+* Execution cache `sd_cache()`: unchanged nodes are taken from the previous run.
+* `on_event` callback and `sd_pipeline_cancel()`.
+* `sd_run_batch()` (zip / grid) and `sd_loopback()`; run-time `input_*` nodes; `sd_cache(max_mb = )`.
+* Masks (`load_mask`, `invert_mask`, `save_mask`), image nodes (`resize`, `crop`, `composite`), `upscale_latent`.
+* `sd_sample()` gains `mask` (inpainting) and `control_image` (ControlNet); `control` input on `txt2img` / `sample` nodes.
+* Background removal with RMBG-1.4 (`sd_remove_background()`, needs ggmlR > 0.9.0); ControlNet preprocessors `sd_canny()` and `sd_estimate_depth()` (Depth Anything V2).
+* Fixes: half-pixel shift in internal image resize; image bytes are rounded, not truncated; low-level `sd_sample()` with `cfg_scale > 1` crashed on UNet models and mis-batched cond/uncond (trailing batch axis dropped).
 * `sd_load_pipeline()` uses a safe JSON parser (no code evaluation); strings with quotes, backslashes and newlines now round-trip.
 * Windows build fixes (`convert.cpp` output, `<windows.h>` vs `abort()` macro).
 

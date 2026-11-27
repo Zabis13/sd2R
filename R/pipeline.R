@@ -247,6 +247,8 @@ sd_ctx <- function(model_path = NULL,
 
   ctx <- sd_create_context(params)
   attr(ctx, "model_type") <- model_type
+  # unique per created context (an external pointer address can be reused)
+  attr(ctx, "sd2R_generation") <- .next_ctx_generation()
   attr(ctx, "vae_decode_only") <- vae_decode_only
   attr(ctx, "lora_model_dir") <- if (is.null(lora_model_dir)) NULL else normalizePath(lora_model_dir, mustWork = FALSE)
   # Effective LoRA mode (known once the model is loaded, i.e. with eager_load).
@@ -1738,34 +1740,45 @@ sd_txt2img_highres <- function(ctx,
   .array_to_sd_image(.resize_array(sd_image_to_array(image), target_w, target_h))
 }
 
-# Bilinear resize of a numeric array [H, W, C] (center-aligned sampling)
-.resize_array <- function(arr, target_w, target_h) {
+# Resize of a numeric array [H, W, C] with center-aligned sampling: target
+# pixel i maps to source position (i - 0.5) * src / target + 0.5 (1-based),
+# so resizing to the same size returns the input unchanged.
+# method: "bilinear" (default) or "nearest".
+.resize_array <- function(arr, target_w, target_h,
+                          method = c("bilinear", "nearest")) {
+  method <- match.arg(method)
   src_h <- dim(arr)[1]
   src_w <- dim(arr)[2]
   ch <- dim(arr)[3]
 
   out <- array(0, dim = c(target_h, target_w, ch))
 
-  # Coordinate mapping: target pixel -> source pixel (center-aligned)
-  sy <- (seq_len(target_h) - 0.5) * src_h / target_h
-  sx <- (seq_len(target_w) - 0.5) * src_w / target_w
+  if (method == "nearest") {
+    iy <- pmin(pmax(floor((seq_len(target_h) - 0.5) * src_h / target_h) + 1, 1), src_h)
+    ix <- pmin(pmax(floor((seq_len(target_w) - 0.5) * src_w / target_w) + 1, 1), src_w)
+    out[] <- arr[iy, ix, , drop = FALSE]
+    return(out)
+  }
 
-  y0 <- as.integer(pmax(floor(sy), 1))
-  y1 <- as.integer(pmin(y0 + 1L, src_h))
-  fy <- sy - floor(sy)
+  # source positions, clamped to the pixel centers at the edges
+  sy <- pmin(pmax((seq_len(target_h) - 0.5) * src_h / target_h + 0.5, 1), src_h)
+  sx <- pmin(pmax((seq_len(target_w) - 0.5) * src_w / target_w + 0.5, 1), src_w)
 
-  x0 <- as.integer(pmax(floor(sx), 1))
-  x1 <- as.integer(pmin(x0 + 1L, src_w))
-  fx <- sx - floor(sx)
+  y0 <- as.integer(floor(sy))
+  y1 <- pmin(y0 + 1L, src_h)
+  fy <- sy - y0
 
-  # FIX: arr is 3D [H, W, C]. Indexing arr[y0, , c, drop=FALSE] on a 3D array
-  # returns a 3D result, then top[, x0] crashes with "wrong number of dimensions".
-  # Solution: extract 2D matrix per channel first, then interpolate on [H, W].
+  x0 <- as.integer(floor(sx))
+  x1 <- pmin(x0 + 1L, src_w)
+  fx <- sx - x0
+
+  # per channel on the 2D [H, W] matrix (3D indexing keeps a 3rd dim)
   for (ci in seq_len(ch)) {
     mat <- arr[, , ci]  # [src_h, src_w]
-    # Interpolate along Y: top[i,j] = mat[y0[i], j] * (1-fy[i]) + mat[y1[i], j] * fy[i]
+    if (!is.matrix(mat)) mat <- matrix(mat, src_h, src_w)
+    # along Y: top[i, j] = mat[y0[i], j] * (1 - fy[i]) + mat[y1[i], j] * fy[i]
     top <- mat[y0, , drop = FALSE] * (1 - fy) + mat[y1, , drop = FALSE] * fy
-    # top is [target_h, src_w]. Now interpolate along X:
+    # top is [target_h, src_w]; along X:
     out[, , ci] <- top[, x0, drop = FALSE] * (1 - rep(fx, each = target_h)) +
                    top[, x1, drop = FALSE] * rep(fx, each = target_h)
   }
@@ -1783,7 +1796,7 @@ sd_txt2img_highres <- function(ctx,
   ch <- dim(arr)[3]
   # R array [H, W, C] → row-major interleaved [y][x][c]
   interleaved <- aperm(arr, c(3, 2, 1))
-  bytes <- as.raw(as.integer(pmin(pmax(as.numeric(interleaved) * 255, 0), 255)))
+  bytes <- as.raw(as.integer(round(pmin(pmax(as.numeric(interleaved) * 255, 0), 255))))
   list(width = as.integer(w), height = as.integer(h),
        channel = as.integer(ch), data = bytes)
 }
@@ -2127,3 +2140,14 @@ sd_generate_multi_gpu <- function(model_path = NULL,
 
 #' @keywords internal
 `%||%` <- function(x, y) if (is.null(x)) y else x
+
+# Context generation counter: identifies a context in sd_run_pipeline cache
+# keys (see sd_cache), since a freed context address can be reused.
+.next_ctx_generation <- local({
+  n <- 0
+  function() {
+    n <<- n + 1
+    n
+  }
+})
+

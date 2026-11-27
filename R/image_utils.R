@@ -88,7 +88,7 @@ sd_load_image <- function(path, channels = 3L) {
   # Need row-major interleaved [y][x][c] (c varies fastest).
   # aperm [H,W,C] → [C,W,H] then as.vector reads c-first, w-next, h-last = row-major
   interleaved <- aperm(img, c(3, 2, 1))
-  bytes <- as.raw(as.integer(pmin(pmax(as.numeric(interleaved) * 255, 0), 255)))
+  bytes <- as.raw(as.integer(round(pmin(pmax(as.numeric(interleaved) * 255, 0), 255))))
 
   list(
     width = as.integer(w),
@@ -164,7 +164,7 @@ sd_load_mask <- function(path) {
   # m is [H, W] column-major; engine wants row-major [y][x] (x fastest).
   # t(m) -> [W, H], as.numeric reads w-first then h = row-major order.
   vals <- as.numeric(t(m)) * scale
-  bytes <- as.raw(as.integer(pmin(pmax(vals, 0), 255)))
+  bytes <- as.raw(as.integer(round(pmin(pmax(vals, 0), 255))))
   list(
     width = as.integer(w),
     height = as.integer(h),

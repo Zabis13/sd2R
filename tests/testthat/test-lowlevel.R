@@ -188,3 +188,61 @@ test_that("low-level encode/sample/decode round-trip on a real model", {
   # non-trivial output (not all one value)
   expect_gt(stats::sd(as.integer(img$data)), 1)
 })
+
+# --- sd_sample: mask / control_image checks (before C++) ---
+
+test_that("sd_sample validates mask / control inputs up front", {
+  local_mocked_bindings(
+    sd_ctx_latent_info_cpp = function(ctx) c(8L, 4L),
+    sd_ctx_is_inpaint_model_cpp = function(ctx) FALSE,
+    sd_ctx_has_control_net_cpp = function(ctx) TRUE)
+  noise <- list(type = 0L, ne = c(4L, 2L, 4L, 1L), data = rep(0, 32))
+  init <- noise
+  f <- function(...) sd2R:::.sample_extra_inputs("ctx", noise, init, ...)
+  m_ok <- matrix(1, 16, 32)                  # [H, W] = 16 x 32 pixels
+  expect_equal(f(m_ok, NULL, 0.9)$mask$width, 32L)
+  expect_error(sd2R:::.sample_extra_inputs("ctx", noise, NULL, m_ok, NULL, 0.9),
+               "'mask' needs 'init_latent'")
+  expect_error(f(matrix(1, 8, 8), NULL, 0.9),
+               "mask is 8x8, the generation is 32x16; resize it first")
+  gray <- sd2R:::.array_to_sd_image(array(0.5, c(16, 32, 1)))
+  ci <- f(NULL, gray, 0.9)$control
+  expect_equal(ci$channel, 3L)               # grayscale expanded to RGB
+  expect_error(f(NULL, gray, 3), "'control_strength' must be a number in \\[0, 2\\]")
+  expect_error(f(NULL, sd2R:::.array_to_sd_image(array(0, c(8, 8, 3))), 0.9),
+               "control image is 8x8")
+  expect_equal(f(NULL, NULL, 99), list(mask = NULL, control = NULL))
+})
+
+test_that("sd_sample refuses inpaint checkpoints and missing ControlNet", {
+  local_mocked_bindings(
+    sd_ctx_latent_info_cpp = function(ctx) c(8L, 4L),
+    sd_ctx_is_inpaint_model_cpp = function(ctx) TRUE,
+    sd_ctx_has_control_net_cpp = function(ctx) FALSE)
+  noise <- list(type = 0L, ne = c(4L, 2L, 4L, 1L), data = rep(0, 32))
+  f <- function(...) sd2R:::.sample_extra_inputs("ctx", noise, noise, ...)
+  expect_error(f(matrix(1, 16, 32), NULL, 0.9),
+               "inpainting checkpoints are not supported.*sd_img2img\\(mask = \\)")
+  expect_error(f(NULL, sd2R:::.array_to_sd_image(array(0, c(16, 32, 3))), 0.9),
+               "the context has no ControlNet")
+})
+
+test_that("sd_sample passes mask / control to C++ and errors on NULL result", {
+  got <- NULL
+  local_mocked_bindings(
+    sd_ctx_latent_info_cpp = function(ctx) c(8L, 4L),
+    sd_ctx_is_inpaint_model_cpp = function(ctx) FALSE,
+    sd_ctx_has_control_net_cpp = function(ctx) TRUE,
+    sd_sample_cpp = function(...) {
+      a <- list(...); got <<- a[13:15]; NULL
+    })
+  noise <- list(type = 0L, ne = c(4L, 2L, 4L, 1L), data = rep(0, 32))
+  ctrl <- sd2R:::.array_to_sd_image(array(0, c(16, 32, 3)))
+  expect_error(sd_sample("ctx", cond = list(), noise = noise, init_latent = noise,
+                         mask = matrix(1, 16, 32), control_image = ctrl,
+                         control_strength = 0.4),
+               "sd_sample: sampling failed")
+  expect_equal(got[[1]]$channel, 1L)
+  expect_identical(got[[2]], ctrl)
+  expect_equal(got[[3]], 0.4)
+})
