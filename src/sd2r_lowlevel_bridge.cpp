@@ -101,6 +101,12 @@ bool sd_ctx_has_control_net_cpp(SEXP ctx_sexp) {
 }
 
 // [[Rcpp::export]]
+bool sd_ctx_supports_batch_cpp(SEXP ctx_sexp) {
+    SdCtxXPtr xptr(ctx_sexp);
+    return xptr.get() != nullptr && sd_ctx_supports_batch(xptr.get());
+}
+
+// [[Rcpp::export]]
 bool sd_ctx_is_inpaint_model_cpp(SEXP ctx_sexp) {
     SdCtxXPtr xptr(ctx_sexp);
     return xptr.get() != nullptr && sd_ctx_is_inpaint_model(xptr.get());

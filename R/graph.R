@@ -21,7 +21,12 @@
 #'   explicitly; needs a context with \code{control_net_path}; strength via
 #'   \code{control_strength}) (see Details). Low-level:
 #'   \code{"encode_text"}, \code{"load_image"}, \code{"encode_image"},
-#'   \code{"sample"}, \code{"decode"}, \code{"upscale_latent"}.
+#'   \code{"sample"}, \code{"decode"}, \code{"upscale_latent"}. Batches:
+#'   \code{sample} with \code{batch = N} gives N latents, \code{decode}
+#'   turns them into a batch image; other nodes take one item, so pick one
+#'   with \code{"unbatch"} (image) / \code{"unbatch_latent"} (param
+#'   \code{index}, default 1), or split the result with
+#'   \code{\link{sd_unbatch}}.
 #' @param ... Parameters for the node (passed to the corresponding function).
 #'   Arguments named after one of the node's inputs (\code{cond},
 #'   \code{uncond}, \code{latent}, \code{image}) are links to earlier nodes:
@@ -406,6 +411,18 @@ sd_run_pipeline <- function(pipeline, ctx, upscaler_ctx = NULL,
     }
     env$node_id <- node$id
     out <- tryCatch({
+      # a batch (N > 1 images / latents) only goes to nodes that handle it
+      if (!isTRUE(spec$batch_ok)) {
+        for (s in names(inputs)) {
+          nb <- .value_n(inputs[[s]])
+          if (nb > 1L) {
+            stop(sprintf(paste0("node %d (%s): input '%s' is a batch of %d; ",
+                                "this node takes one item, use an 'unbatch' ",
+                                "or 'unbatch_latent' node first"),
+                         i, node$type, s, nb), call. = FALSE)
+          }
+        }
+      }
       o <- spec$run(env, node$params, inputs)
       if (!identical(sort(names(o)), sort(spec$outputs))) {
         stop(sprintf("node %d (%s) returned slots [%s], declared [%s]", i,
@@ -743,7 +760,7 @@ print.sd_pipeline <- function(x, ...) {
     kinds = c(control = "image"),
     explicit = c("mask", "control"),   # never bound implicitly
     needs = c(mask = "latent"),        # inpainting is img2img
-    outputs = "latent",
+    outputs = "latent", batch_ok = TRUE,   # init latent: 1 or N elements
     required_params = character(0), cache = TRUE,
     # before anything runs: a control input needs a ControlNet in ctx
     check_ctx = function(ctx, params, linked) .check_control_net(ctx, linked),
@@ -776,9 +793,24 @@ print.sd_pipeline <- function(x, ...) {
       list(latent = res)
     }
   ),
+  unbatch = list(
+    inputs = "image", optional = character(0), outputs = "image",
+    required_params = character(0), batch_ok = TRUE,
+    run = function(env, params, inputs) {
+      list(image = .unbatch_pick(inputs$image, params$index %||% 1L, "unbatch"))
+    }
+  ),
+  unbatch_latent = list(
+    inputs = "latent", optional = character(0), outputs = "latent",
+    required_params = character(0), batch_ok = TRUE,
+    run = function(env, params, inputs) {
+      list(latent = .unbatch_pick(inputs$latent, params$index %||% 1L,
+                                  "unbatch_latent"))
+    }
+  ),
   decode = list(
     inputs = "latent", optional = character(0), outputs = "image",
-    required_params = character(0),
+    required_params = character(0), batch_ok = TRUE,
     run = function(env, params, inputs) {
       list(image = sd_decode_latent(env$ctx, inputs$latent))
     }
@@ -1067,8 +1099,8 @@ input_kind <- function(spec, s) {
     ok <- is.list(v) && all(c("width", "height", "channel", "data") %in% names(v)) &&
       is.raw(v$data)
     if (!ok) return(sprintf("expected an SD image (%s)", kind))
-    if (length(v$data) != v$width * v$height * v$channel) {
-      return("data length does not match width * height * channel")
+    if (length(v$data) != v$width * v$height * v$channel * .image_n(v)) {
+      return("data length does not match width * height * channel (* batch)")
     }
     if (kind == "mask" && v$channel != 1L) return("a mask must have 1 channel")
     if (kind == "image" && !v$channel %in% c(1L, 3L, 4L)) {
@@ -1103,6 +1135,24 @@ input_kind <- function(spec, s) {
   on.exit(unlink(tf))
   writeBin(serialize(x, NULL, xdr = FALSE), tf)
   unname(tools::md5sum(tf))
+}
+
+# number of elements of a node value: batch images / latents, else 1
+.value_n <- function(v) {
+  if (!is.list(v)) return(1L)
+  if (!is.null(v$ne)) return(.tensor_n(v))
+  if (!is.null(v$width)) return(.image_n(v))
+  1L
+}
+
+# unbatch / unbatch_latent: element `index` (1-based) of a batch
+.unbatch_pick <- function(x, index, what) {
+  n <- .value_n(x)
+  if (!is.numeric(index) || length(index) != 1L || is.na(index) ||
+      index != round(index) || index < 1 || index > n) {
+    stop(sprintf("%s: 'index' must be an integer in 1..%d", what, n), call. = FALSE)
+  }
+  sd_unbatch(x)[[as.integer(index)]]
 }
 
 # check_ctx of nodes with a `control` input
@@ -1258,7 +1308,7 @@ pipeline_from_json <- function(json) {
   lapply(out, function(v) {
     if (is.list(v) && !is.null(v$width) && !is.null(v$channel)) {
       list(class = "sd_image", width = v$width, height = v$height,
-           channel = v$channel, bytes = length(v$data))
+           channel = v$channel, batch = .image_n(v), bytes = length(v$data))
     } else if (is.list(v) && !is.null(v$ne)) {
       list(class = "sd_tensor", ne = v$ne,
            bytes = as.numeric(utils::object.size(v)))

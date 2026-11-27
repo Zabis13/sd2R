@@ -21,7 +21,8 @@ sd_sample(
   custom_sigmas = NULL,
   mask = NULL,
   control_image = NULL,
-  control_strength = 0.9
+  control_strength = 0.9,
+  batch = 1L
 )
 }
 \arguments{
@@ -71,6 +72,15 @@ path) of the generation size in pixels; needs a context created with
 
 \item{control_strength}{ControlNet strength in \code{[0, 2]} (default
 0.9); used with \code{control_image}.}
+
+\item{batch}{Number of latents N sampled together (default 1). Element k
+gets noise from \code{seed + k - 1}, so element 1 equals the
+\code{batch = 1} result. Models that accept a batch in one call (UNet:
+SD1/SD2/SDXL) sample all N at once (faster, N times the VRAM); others
+(DiT: FLUX, SD3, ...) and runs with \code{mask} / \code{control_image}
+sample them one by one. The result has \code{ne[4] = N} either way. An
+explicit \code{noise} with \code{ne[4] = N} sets the batch size; an
+\code{init_latent} has 1 element (used for all) or N.}
 }
 \value{
 An sd_tensor list — the denoised latent x_0. Pass to

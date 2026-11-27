@@ -5,6 +5,7 @@
 * Execution cache `sd_cache()`: unchanged nodes are taken from the previous run.
 * `on_event` callback and `sd_pipeline_cancel()`.
 * `sd_run_batch()` (zip / grid) and `sd_loopback()`; run-time `input_*` nodes; `sd_cache(max_mb = )`.
+* `sd_sample(batch = )` / `sample` node `batch`: N latents in one call on UNet models, element-by-element on others (same result); `sd_unbatch()`, `unbatch` / `unbatch_latent` nodes.
 * Masks (`load_mask`, `invert_mask`, `save_mask`), image nodes (`resize`, `crop`, `composite`), `upscale_latent`.
 * `sd_sample()` gains `mask` (inpainting) and `control_image` (ControlNet); `control` input on `txt2img` / `sample` nodes.
 * Background removal with RMBG-1.4 (`sd_remove_background()`, needs ggmlR > 0.9.0); ControlNet preprocessors `sd_canny()` and `sd_estimate_depth()` (Depth Anything V2).

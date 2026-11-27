@@ -24,7 +24,12 @@ required, \code{device}, \code{size}; see
 explicitly; needs a context with \code{control_net_path}; strength via
 \code{control_strength}) (see Details). Low-level:
 \code{"encode_text"}, \code{"load_image"}, \code{"encode_image"},
-\code{"sample"}, \code{"decode"}, \code{"upscale_latent"}.}
+\code{"sample"}, \code{"decode"}, \code{"upscale_latent"}. Batches:
+\code{sample} with \code{batch = N} gives N latents, \code{decode}
+turns them into a batch image; other nodes take one item, so pick one
+with \code{"unbatch"} (image) / \code{"unbatch_latent"} (param
+\code{index}, default 1), or split the result with
+\code{\link{sd_unbatch}}.}
 
 \item{...}{Parameters for the node (passed to the corresponding function).
 Arguments named after one of the node's inputs (\code{cond},

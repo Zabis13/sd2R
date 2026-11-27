@@ -38,6 +38,9 @@
 #  16. sd_run_batch / sd_loopback: (a) zip over 3 seeds, encode_text runs
 #      once (cache); (b) 2 x 2 grid seed x strength of img2img on a run-time
 #      input; (c) loopback img2img x3 with decaying strength, keep = "all"
+#  17. tensor batch on FLUX.3 (no batch support -> element-by-element loop):
+#      sample(batch = 2) -> decode; element 1 = step-2 image (same seed),
+#      element 2 = a single run with seed + 1
 # Run: Rscript /mnt/Data2/DS_projects/sd2R/inst/examples/test_graph_flux3.R
 
 library(sd2R)
@@ -613,6 +616,28 @@ cat(sprintf(paste0("loopback: %.2fs | 3 iterations saved: %s | encode_text ran %
             paste(sprintf("%.3f", d_step), collapse = " -> ")))
 res$batch <- distinct_a && enc_once && grid_ok && loop_ok
 
+# --- 17. tensor batch on FLUX.3 (fallback loop) -----------------------------
+cat("\n--- 17. sample(batch = 2) on FLUX.3 (loop) ---\n")
+pipe17 <- sd_pipeline(
+  sd_node("encode_text", id = "txt", prompt = prompt, width = W, height = H),
+  sample_node("lat", cond = "txt", uncond = "txt$uncond", width = W, height = H,
+              batch = 2L),
+  sd_node("decode", id = "imgs", latent = "lat")
+)
+r17 <- timed(sd_run_pipeline(pipe17, ctx, outputs = "imgs"))
+imgs17 <- r17$val$imgs
+el <- sd_unbatch(imgs17)
+single2 <- sd_run_pipeline(sd_pipeline(
+  sd_node("encode_text", id = "txt", prompt = prompt, width = W, height = H),
+  sample_node("lat", cond = "txt", uncond = "txt$uncond", width = W, height = H,
+              seed_override = seed + 1L),
+  sd_node("decode", id = "img", latent = "lat")), ctx)
+res$tbatch <- isTRUE(imgs17$batch == 2L) &&
+  identical(el[[1]]$data, img_t2i$data) && identical(el[[2]]$data, single2$data)
+cat(sprintf("wall time: %.2fs (single run in step 2: %.2fs) | element 1 == step 2: %s | element 2 == seed + 1 alone: %s\n",
+            r17$t, r2$t, identical(el[[1]]$data, img_t2i$data),
+            identical(el[[2]]$data, single2$data)))
+
 # --- Summary ----------------------------------------------------------------
 cat("\n=== Summary ===\n")
 cat(sprintf("1. geometry C++ vs encode_image: %s\n", if (res$geometry) "MATCH" else "MISMATCH"))
@@ -644,4 +669,6 @@ cat(sprintf("15. canny / depth:               %s / %s\n",
             if (is.na(res$pre_depth)) "SKIPPED" else if (res$pre_depth) "OK" else "MISMATCH"))
 cat(sprintf("16. batch / grid / loopback:     %s (%.2fs / %.2fs / %.2fs)\n",
             if (res$batch) "OK" else "MISMATCH", r16a$t, r16b$t, r16c$t))
+cat(sprintf("17. tensor batch (loop):         %s (%.2fs)\n",
+            if (res$tbatch) "OK" else "MISMATCH", r17$t))
 cat("\n=== Done ===\n")

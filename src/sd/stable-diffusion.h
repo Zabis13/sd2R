@@ -727,6 +727,10 @@ SD_API bool sd_ctx_control_net_configured(const sd_ctx_t* sd_ctx);
 // True for inpainting checkpoints (need concat conditioning, not supported
 // by the low-level sampler yet).
 SD_API bool sd_ctx_is_inpaint_model(const sd_ctx_t* sd_ctx);
+// True if the diffusion model accepts a batch of latents (ne[3] > 1) in one
+// sampling call. Verified for UNet models (SD1/SD2/SDXL); DiT models are
+// reported as unsupported (FLUX.3 asserts ne[3] == 1).
+SD_API bool sd_ctx_supports_batch(const sd_ctx_t* sd_ctx);
 SD_API void sd_tensor_free(sd_tensor* t);
 SD_API void sd_cond_free(sd_cond* c);
 SD_API float* sd_sampler_sigmas(sd_ctx_t* sd_ctx,

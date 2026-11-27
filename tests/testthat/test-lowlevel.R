@@ -246,3 +246,88 @@ test_that("sd_sample passes mask / control to C++ and errors on NULL result", {
   expect_identical(got[[2]], ctrl)
   expect_equal(got[[3]], 0.4)
 })
+
+# --- sd_sample batch ---
+
+test_that("batch noise: element 1 is the batch = 1 noise, seeds per element", {
+  n1 <- sd2R:::.batch_noise(c(4L, 2L, 3L), 42L, 1L)
+  set.seed(42L)
+  expect_equal(n1$data, stats::rnorm(24))                  # unchanged
+  expect_equal(n1$ne, c(4L, 2L, 3L, 1L))
+  n3 <- sd2R:::.batch_noise(c(4L, 2L, 3L), 42L, 3L)
+  expect_equal(n3$ne, c(4L, 2L, 3L, 3L))
+  expect_equal(sd2R:::.tensor_element(n3, 1L)$data, n1$data)
+  set.seed(44L)
+  expect_equal(sd2R:::.tensor_element(n3, 3L)$data, stats::rnorm(24))
+  expect_equal(sd2R:::.tensor_bind(lapply(1:3, function(k)
+    sd2R:::.tensor_element(n3, k))), n3)
+})
+
+test_that("sd_sample batch: one call on batch models, loop otherwise", {
+  calls <- list()
+  local_mocked_bindings(
+    sd_ctx_latent_info_cpp = function(ctx) c(8L, 4L),
+    sd_sample_cpp = function(ctx, init, noise, ...) {
+      calls[[length(calls) + 1L]] <<- list(init = init, noise = noise)
+      noise                                                # x0 := noise
+    })
+  cond <- list(crossattn = NULL, vector = NULL, concat = NULL)
+
+  local_mocked_bindings(sd_ctx_supports_batch_cpp = function(ctx) TRUE)
+  b <- sd_sample("ctx", cond, latent_shape = c(4L, 2L, 3L), seed = 7L, batch = 2L)
+  expect_equal(length(calls), 1L)                          # one call
+  expect_equal(b$ne, c(4L, 2L, 3L, 2L))
+
+  calls <- list()
+  local_mocked_bindings(sd_ctx_supports_batch_cpp = function(ctx) FALSE)
+  l <- sd_sample("ctx", cond, latent_shape = c(4L, 2L, 3L), seed = 7L, batch = 2L)
+  expect_equal(length(calls), 2L)                          # one per element
+  expect_true(all(vapply(calls, function(x) x$noise$ne[4] == 1L, logical(1L))))
+  expect_identical(l, b)                                   # same result format
+
+  # batch = 1: exactly the old single call
+  calls <- list()
+  one <- sd_sample("ctx", cond, latent_shape = c(4L, 2L, 3L), seed = 7L)
+  expect_equal(length(calls), 1L)
+  expect_equal(one$data, sd2R:::.tensor_element(b, 1L)$data)
+})
+
+test_that("sd_sample batch: init_latent 1 or N, explicit noise, checks", {
+  calls <- list()
+  local_mocked_bindings(
+    sd_ctx_latent_info_cpp = function(ctx) c(8L, 4L),
+    sd_ctx_supports_batch_cpp = function(ctx) TRUE,
+    sd_sample_cpp = function(ctx, init, noise, ...) {
+      calls[[length(calls) + 1L]] <<- list(init = init, noise = noise); noise
+    })
+  cond <- list(crossattn = NULL, vector = NULL, concat = NULL)
+  init1 <- list(type = 0L, ne = c(4L, 2L, 3L, 1L), data = rep(1, 24))
+  sd_sample("ctx", cond, latent_shape = c(4L, 2L, 3L), init_latent = init1,
+            batch = 3L, strength = 0.5)
+  expect_equal(calls[[1]]$init$ne, c(4L, 2L, 3L, 3L))      # repeated to N
+  init2 <- list(type = 0L, ne = c(4L, 2L, 3L, 2L), data = rep(1, 48))
+  expect_error(sd_sample("ctx", cond, latent_shape = c(4L, 2L, 3L),
+                         init_latent = init2, batch = 3L),
+               "'init_latent' has 2 elements, need 1 or 3")
+  nz <- sd2R:::.batch_noise(c(4L, 2L, 3L), 1L, 2L)
+  out <- sd_sample("ctx", cond, noise = nz)
+  expect_equal(out$ne[4], 2L)                              # batch from noise
+  expect_error(sd_sample("ctx", cond, noise = nz, batch = 3L),
+               "'batch' = 3 but 'noise' has 2 element")
+  expect_error(sd_sample("ctx", cond, latent_shape = c(4L, 2L, 3L), batch = 0),
+               "'batch' must be a positive integer")
+})
+
+test_that("sd_sample batch with mask / control always loops", {
+  calls <- 0L
+  local_mocked_bindings(
+    sd_ctx_latent_info_cpp = function(ctx) c(8L, 4L),
+    sd_ctx_supports_batch_cpp = function(ctx) TRUE,
+    sd_ctx_is_inpaint_model_cpp = function(ctx) FALSE,
+    sd_sample_cpp = function(ctx, init, noise, ...) { calls <<- calls + 1L; noise })
+  cond <- list(crossattn = NULL, vector = NULL, concat = NULL)
+  init1 <- list(type = 0L, ne = c(4L, 2L, 3L, 1L), data = rep(1, 24))
+  sd_sample("ctx", cond, latent_shape = c(4L, 2L, 3L), init_latent = init1,
+            mask = matrix(1, 16, 32), batch = 2L)
+  expect_equal(calls, 2L)
+})

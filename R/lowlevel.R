@@ -49,11 +49,58 @@ sd_encode_image <- function(ctx, image) {
 #' @param latent An sd_tensor list (e.g. the output of \code{\link{sd_sample}}
 #'   or \code{\link{sd_encode_image}}).
 #' @return An sd_image list (\code{width}, \code{height}, \code{channel},
-#'   \code{data}).
+#'   \code{data}). For a batch latent (\code{ne[4] = N > 1}, see the
+#'   \code{batch} argument of \code{\link{sd_sample}}) the elements are
+#'   decoded one by one and returned as one image with \code{batch = N}
+#'   and the N images' data one after another; split it with
+#'   \code{\link{sd_unbatch}}.
 #' @export
 #' @seealso \code{\link{sd_save_image}}
 sd_decode_latent <- function(ctx, latent) {
-  sd_decode_latent_cpp(ctx, latent)
+  n <- .tensor_n(latent)
+  if (n == 1L) return(sd_decode_latent_cpp(ctx, latent))
+  .image_bind(lapply(seq_len(n), function(k) {
+    sd_decode_latent_cpp(ctx, .tensor_element(latent, k))
+  }))
+}
+
+#' Split a batch into its elements
+#'
+#' Splits a batch image (field \code{batch = N}, e.g. from
+#' \code{\link{sd_decode_latent}} of a batch latent) or a batch latent
+#' (\code{ne[4] = N}, from \code{sd_sample(batch = N)}) into a list of N
+#' single elements. A single element gives a list of length 1.
+#'
+#' @param x An SD image or an sd_tensor latent.
+#' @return A list of SD images or latents.
+#' @export
+sd_unbatch <- function(x) {
+  if (is.list(x) && !is.null(x$ne)) {
+    return(lapply(seq_len(.tensor_n(x)), function(k) .tensor_element(x, k)))
+  }
+  if (is.list(x) && !is.null(x$width)) {
+    return(lapply(seq_len(.image_n(x)), function(k) .image_element(x, k)))
+  }
+  stop("sd_unbatch: expected an SD image or an sd_tensor latent", call. = FALSE)
+}
+
+# number of images in an SD image (field `batch`, absent = 1)
+.image_n <- function(img) if (is.null(img$batch)) 1L else as.integer(img$batch)
+
+# k-th image of a batch image (a plain image, without `batch`)
+.image_element <- function(img, k) {
+  n <- img$width * img$height * img$channel
+  img$data <- img$data[(k - 1) * n + seq_len(n)]
+  img$batch <- NULL
+  img
+}
+
+# bind plain images of one size into a batch image
+.image_bind <- function(imgs) {
+  out <- imgs[[1L]]
+  out$data <- do.call(c, lapply(imgs, `[[`, "data"))
+  out$batch <- length(imgs)
+  out
 }
 
 #' Run the sampling loop (low-level)
@@ -92,6 +139,14 @@ sd_decode_latent <- function(ctx, latent) {
 #'   \code{control_net_path}. Alpha is dropped, grayscale expanded to RGB.
 #' @param control_strength ControlNet strength in \code{[0, 2]} (default
 #'   0.9); used with \code{control_image}.
+#' @param batch Number of latents N sampled together (default 1). Element k
+#'   gets noise from \code{seed + k - 1}, so element 1 equals the
+#'   \code{batch = 1} result. Models that accept a batch in one call (UNet:
+#'   SD1/SD2/SDXL) sample all N at once (faster, N times the VRAM); others
+#'   (DiT: FLUX, SD3, ...) and runs with \code{mask} / \code{control_image}
+#'   sample them one by one. The result has \code{ne[4] = N} either way. An
+#'   explicit \code{noise} with \code{ne[4] = N} sets the batch size; an
+#'   \code{init_latent} has 1 element (used for all) or N.
 #' @return An sd_tensor list — the denoised latent x_0. Pass to
 #'   \code{\link{sd_decode_latent}}.
 #' @export
@@ -104,7 +159,7 @@ sd_sample <- function(ctx, cond, uncond = list(crossattn = NULL, vector = NULL, 
                       sample_steps = 20L, cfg_scale = 7.0, eta = 0.0,
                       seed = 42L, custom_sigmas = NULL,
                       mask = NULL, control_image = NULL,
-                      control_strength = 0.9) {
+                      control_strength = 0.9, batch = 1L) {
   if (is.character(sample_method)) {
     sm <- SAMPLE_METHOD[[sample_method]]
     if (is.null(sm)) stop("Unknown sample_method: ", sample_method, call. = FALSE)
@@ -116,33 +171,103 @@ sd_sample <- function(ctx, cond, uncond = list(crossattn = NULL, vector = NULL, 
     scheduler <- sc
   }
 
+  if (!is.numeric(batch) || length(batch) != 1L || is.na(batch) || batch < 1 ||
+      batch != round(batch)) {
+    stop("sd_sample: 'batch' must be a positive integer", call. = FALSE)
+  }
+  batch <- as.integer(batch)
   if (is.null(noise)) {
     if (is.null(latent_shape) || length(latent_shape) < 3L) {
       stop("Either `noise` or `latent_shape = c(W, H, C)` must be supplied.",
            call. = FALSE)
     }
-    n <- prod(as.numeric(latent_shape[1:3]))
-    set.seed(seed)
-    noise <- list(
-      type = SD_TYPE$F32,
-      ne   = as.integer(c(latent_shape[1], latent_shape[2], latent_shape[3], 1L)),
-      data = stats::rnorm(n)
-    )
+    noise <- .batch_noise(latent_shape, seed, batch)
+  } else {
+    n_noise <- if (length(noise$ne) >= 4L) as.integer(noise$ne[4L]) else 1L
+    if (batch != 1L && batch != n_noise) {
+      stop(sprintf("sd_sample: 'batch' = %d but 'noise' has %d element(s)",
+                   batch, n_noise), call. = FALSE)
+    }
+    batch <- n_noise
+  }
+  if (!is.null(init_latent)) {
+    n_init <- if (length(init_latent$ne) >= 4L) as.integer(init_latent$ne[4L]) else 1L
+    if (!n_init %in% c(1L, batch)) {
+      stop(sprintf("sd_sample: 'init_latent' has %d elements, need 1 or %d",
+                   n_init, batch), call. = FALSE)
+    }
   }
 
-  extra <- .sample_extra_inputs(ctx, noise, init_latent, mask, control_image,
-                                control_strength)
-
-  out <- sd_sample_cpp(ctx, init_latent, noise, cond, uncond,
-                       as.integer(sample_method), as.integer(scheduler),
-                       as.integer(sample_steps), as.numeric(cfg_scale),
-                       as.numeric(eta), as.numeric(strength),
-                       if (is.null(custom_sigmas)) NULL else as.numeric(custom_sigmas),
-                       extra$mask, extra$control, as.numeric(control_strength))
-  if (is.null(out)) {
-    stop("sd_sample: sampling failed (see the log with verbose = TRUE in sd_ctx())",
-         call. = FALSE)
+  extra <- .sample_extra_inputs(ctx, .tensor_element(noise, 1L), init_latent,
+                                mask, control_image, control_strength)
+  run <- function(init, nz) {
+    out <- sd_sample_cpp(ctx, init, nz, cond, uncond,
+                         as.integer(sample_method), as.integer(scheduler),
+                         as.integer(sample_steps), as.numeric(cfg_scale),
+                         as.numeric(eta), as.numeric(strength),
+                         if (is.null(custom_sigmas)) NULL else as.numeric(custom_sigmas),
+                         extra$mask, extra$control, as.numeric(control_strength))
+    if (is.null(out)) {
+      stop("sd_sample: sampling failed (see the log with verbose = TRUE in sd_ctx())",
+           call. = FALSE)
+    }
+    out
   }
+  if (batch == 1L) return(run(init_latent, noise))
+
+  # one call when the model takes a batch (and no mask / control, not batched
+  # yet), else element by element; the result format is the same
+  one_call <- is.null(extra$mask) && is.null(extra$control) &&
+    isTRUE(sd_ctx_supports_batch_cpp(ctx))
+  if (one_call) {
+    init <- if (!is.null(init_latent)) .tensor_repeat(init_latent, batch)
+    return(run(init, noise))
+  }
+  parts <- lapply(seq_len(batch), function(k) {
+    init <- if (!is.null(init_latent)) {
+      .tensor_element(init_latent, if (.tensor_n(init_latent) == 1L) 1L else k)
+    }
+    run(init, .tensor_element(noise, k))
+  })
+  .tensor_bind(parts)
+}
+
+# Noise for a batch: element k from seed + k - 1 (k = 1 is the batch = 1 noise)
+.batch_noise <- function(latent_shape, seed, batch) {
+  n <- prod(as.numeric(latent_shape[1:3]))
+  data <- unlist(lapply(seq_len(batch), function(k) {
+    set.seed(seed + k - 1L)
+    stats::rnorm(n)
+  }), use.names = FALSE)
+  list(type = SD_TYPE$F32,
+       ne   = as.integer(c(latent_shape[1:3], batch)),
+       data = data)
+}
+
+# number of elements (ne[4]) of an sd_tensor
+.tensor_n <- function(t) if (length(t$ne) >= 4L) as.integer(t$ne[4L]) else 1L
+
+# k-th element (along ne[4]) of an sd_tensor
+.tensor_element <- function(t, k) {
+  n <- prod(as.numeric(t$ne[1:3]))
+  t$data <- t$data[(k - 1) * n + seq_len(n)]
+  t$ne <- as.integer(c(t$ne[1:3], 1L))
+  t
+}
+
+# sd_tensor with 1 element repeated to `times` elements
+.tensor_repeat <- function(t, times) {
+  if (.tensor_n(t) == times) return(t)
+  t$data <- rep(t$data, times)
+  t$ne <- as.integer(c(t$ne[1:3], times))
+  t
+}
+
+# bind single-element sd_tensors along ne[4]
+.tensor_bind <- function(parts) {
+  out <- parts[[1L]]
+  out$data <- unlist(lapply(parts, `[[`, "data"), use.names = FALSE)
+  out$ne <- as.integer(c(out$ne[1:3], length(parts)))
   out
 }
 

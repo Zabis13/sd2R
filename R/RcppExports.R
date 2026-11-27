@@ -125,6 +125,10 @@ sd_ctx_has_control_net_cpp <- function(ctx_sexp) {
     .Call(`_sd2R_sd_ctx_has_control_net_cpp`, ctx_sexp)
 }
 
+sd_ctx_supports_batch_cpp <- function(ctx_sexp) {
+    .Call(`_sd2R_sd_ctx_supports_batch_cpp`, ctx_sexp)
+}
+
 sd_ctx_is_inpaint_model_cpp <- function(ctx_sexp) {
     .Call(`_sd2R_sd_ctx_is_inpaint_model_cpp`, ctx_sexp)
 }

@@ -397,6 +397,10 @@ SD_API bool sd_ctx_control_net_configured(const sd_ctx_t* sd_ctx) {
            sd_ctx->sd->config_->control_net_file != 0;
 }
 
+SD_API bool sd_ctx_supports_batch(const sd_ctx_t* sd_ctx) {
+    return sd_ctx != nullptr && sd_ctx->sd != nullptr && sd_version_is_unet(sd_ctx->sd->version);
+}
+
 SD_API bool sd_ctx_is_inpaint_model(const sd_ctx_t* sd_ctx) {
     return sd_ctx != nullptr && sd_ctx->sd != nullptr && sd_version_is_inpaint(sd_ctx->sd->version);
 }

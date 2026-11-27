@@ -286,7 +286,8 @@ test_that("every registered node type is well-formed", {
                                   "encode_text", "load_image", "encode_image",
                                   "sample", "decode", "upscale_latent",
                                   "canny", "depth", "input_image",
-                                  "input_mask", "input_latent"))
+                                  "input_mask", "input_latent",
+                                  "unbatch", "unbatch_latent"))
   for (nm in names(types)) {
     spec <- types[[nm]]
     expect_true(is.function(spec$run), info = nm)
@@ -969,4 +970,69 @@ test_that("control input is checked against the context before running", {
   expect_error(sd_run_pipeline(pipe, fake_ctx),
                "node 3 \\(sample\\): input 'control' needs a ControlNet")
   expect_false(ran)                          # nothing ran
+})
+
+# --- batches in the graph ---
+
+test_that("sd_unbatch and decode of a batch latent", {
+  lat <- list(type = 0L, ne = c(2L, 2L, 1L, 3L), data = as.numeric(1:12))
+  parts <- sd_unbatch(lat)
+  expect_length(parts, 3L)
+  expect_equal(parts[[2]]$data, 5:8)
+  expect_equal(parts[[2]]$ne, c(2L, 2L, 1L, 1L))
+  local_mocked_bindings(sd_decode_latent_cpp = function(ctx, latent) {
+    list(width = 1L, height = 1L, channel = 3L,
+         data = as.raw(rep(latent$data[1], 3)))
+  })
+  img <- sd_decode_latent("ctx", lat)
+  expect_equal(img$batch, 3L)
+  expect_equal(as.integer(img$data), rep(c(1L, 5L, 9L), each = 3))
+  single <- sd_decode_latent("ctx", parts[[1]])
+  expect_null(single$batch)                      # N = 1: plain image
+  ims <- sd_unbatch(img)
+  expect_null(ims[[3]]$batch)
+  expect_equal(as.integer(ims[[3]]$data), rep(9L, 3))
+  expect_error(sd_unbatch(1), "expected an SD image or an sd_tensor")
+})
+
+test_that("graph: sample(batch) -> decode -> unbatch; others refuse a batch", {
+  local_mocked_bindings(
+    sd_sample = function(ctx, cond, ..., batch = 1L) {
+      list(type = 0L, ne = c(1L, 1L, 1L, as.integer(batch)),
+           data = as.numeric(seq_len(batch)))
+    },
+    sd_encode_text = function(...) list(crossattn = NULL, vector = NULL, concat = NULL),
+    sd_decode_latent_cpp = function(ctx, latent) {
+      list(width = 1L, height = 1L, channel = 3L,
+           data = as.raw(rep(latent$data[1] * 10, 3)))
+    },
+    latent_geometry = function(...) c(vae_scale_factor = 8L, latent_channels = 1L))
+  pipe <- sd_pipeline(
+    sd_node("encode_text", id = "txt", prompt = "p"),
+    sd_node("sample", id = "lat", cond = "txt", batch = 3L, width = 8, height = 8),
+    sd_node("decode", id = "imgs", latent = "lat"),
+    sd_node("unbatch", id = "second", image = "imgs", index = 2),
+    sd_node("unbatch_latent", id = "l3", latent = "lat", index = 3)
+  )
+  res <- sd_run_pipeline(pipe, NULL, outputs = c("imgs", "second", "l3"))
+  expect_equal(res$imgs$batch, 3L)
+  expect_equal(as.integer(res$second$data), rep(20L, 3))
+  expect_null(res$second$batch)
+  expect_equal(res$l3$data, 3)
+
+  bad <- sd_pipeline(
+    sd_node("encode_text", id = "txt", prompt = "p"),
+    sd_node("sample", id = "lat", cond = "txt", batch = 2L, width = 8, height = 8),
+    sd_node("decode", id = "imgs", latent = "lat"),
+    sd_node("resize", image = "imgs", width = 2)
+  )
+  expect_error(sd_run_pipeline(bad, NULL),
+               "node 4 \\(resize\\): input 'image' is a batch of 2; .*'unbatch'")
+  oob <- sd_pipeline(
+    sd_node("encode_text", id = "txt", prompt = "p"),
+    sd_node("sample", id = "lat", cond = "txt", batch = 2L, width = 8, height = 8),
+    sd_node("decode", id = "imgs", latent = "lat"),
+    sd_node("unbatch", image = "imgs", index = 5)
+  )
+  expect_error(sd_run_pipeline(oob, NULL), "'index' must be an integer in 1..2")
 })

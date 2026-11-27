@@ -14,7 +14,11 @@ or \code{\link{sd_encode_image}}).}
 }
 \value{
 An sd_image list (\code{width}, \code{height}, \code{channel},
-  \code{data}).
+  \code{data}). For a batch latent (\code{ne[4] = N > 1}, see the
+  \code{batch} argument of \code{\link{sd_sample}}) the elements are
+  decoded one by one and returned as one image with \code{batch = N}
+  and the N images' data one after another; split it with
+  \code{\link{sd_unbatch}}.
 }
 \description{
 Decode a latent into a pixel image (low-level VAE decode)

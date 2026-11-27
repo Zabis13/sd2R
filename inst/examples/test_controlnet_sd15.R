@@ -8,6 +8,8 @@
 #      -> decode
 #   4. upscale_latent on a real 4-channel latent: base 256 -> upscale_latent
 #      x2 -> sample(strength) -> decode (512x512, not noise)
+#   5. tensor batch (UNet: one call): sample(batch = 3) -> decode ->
+#      unbatch; element 1 equals batch = 1, timing vs 3 single runs
 # Input: the cat from test_graph_flux3.R (or any PNG); if missing, a source
 # image is generated first with SD 1.5 (no control).
 # Run: Rscript /mnt/Data2/DS_projects/sd2R/inst/examples/test_controlnet_sd15.R
@@ -153,6 +155,29 @@ cat(sprintf("wall time: %.2fs | latent %s -> %s | image %dx%d, pixel sd %.1f -> 
             px_sd, if (res$ul) "OK" else "MISMATCH"))
 cat("saved", out_ul, "\n")
 
+# --- 5. tensor batch -------------------------------------------------------
+cat("\n--- 5. sample(batch = 3) -> decode -> unbatch ---\n")
+bpipe <- function(batch) sd_pipeline(
+  sd_node("encode_text", id = "txt", prompt = prompt, negative_prompt = neg,
+          width = S, height = S),
+  do.call(sd_node, c(list("sample", id = "lat", cond = "txt", uncond = "txt$uncond",
+                          width = S, height = S, batch = batch), gen)),
+  sd_node("decode", id = "imgs", latent = "lat"),
+  sd_node("unbatch", id = "first", image = "imgs", index = 1)
+)
+r5a <- timed(sd_run_pipeline(bpipe(1L), ctx, outputs = c("imgs", "first")))
+r5b <- timed(sd_run_pipeline(bpipe(3L), ctx, outputs = c("imgs", "first")))
+imgs3 <- sd_unbatch(r5b$val$imgs)
+for (k in seq_along(imgs3)) {
+  sd_save_image(imgs3[[k]], file.path(out_dir, sprintf("sd2R_cn_batch_%d.png", k)))
+}
+same1 <- mean(abs(as.integer(r5b$val$first$data) - as.integer(r5a$val$first$data))) / 255
+res$batch <- isTRUE(r5b$val$imgs$batch == 3L) && length(imgs3) == 3L &&
+  same1 < 0.01 && length(unique(lapply(imgs3, `[[`, "data"))) == 3L
+cat(sprintf(paste0("batch = 1: %.2fs | batch = 3: %.2fs (3 single runs ~ %.2fs) | ",
+                   "element 1 vs batch = 1: mean |diff| %.4f -> %s\n"),
+            r5a$t, r5b$t, 3 * r5a$t, same1, if (res$batch) "OK" else "MISMATCH"))
+
 # --- Summary ----------------------------------------------------------------
 cat("\n=== Summary ===\n")
 cat(sprintf("2. txt2img + control:   %s (edges followed %.1f%% vs %.1f%% without)\n",
@@ -161,4 +186,6 @@ cat(sprintf("3. sample + control:    %s (edges followed %.1f%%)\n",
             if (res$ll) "OK" else "WEAK", 100 * f_ll))
 cat(sprintf("4. upscale_latent x2:   %s (%.2fs)\n",
             if (res$ul) "OK" else "MISMATCH", r4$t))
+cat(sprintf("5. batch = 3:           %s (%.2fs vs %.2fs for 3 single runs)\n",
+            if (res$batch) "OK" else "MISMATCH", r5b$t, 3 * r5a$t))
 cat("\n=== Done ===\n")
