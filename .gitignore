@@ -17,3 +17,5 @@ sd2R.Rcheck/
 dev/
 TODO.md
 CLAUDE.md
+tests/testthat/_problems/
+tests/testthat/testthat-problems.rds

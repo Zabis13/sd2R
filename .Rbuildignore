@@ -12,3 +12,5 @@
 ^CRAN-SUBMISSION$
 ^CLAUDE\.md$
 ^LICENSE\.md$
+^tests/testthat/_problems$
+testthat-problems\.rds$
